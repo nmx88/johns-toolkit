@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.1.1'
+$AppVersion = '2.2.0'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
@@ -632,4 +632,186 @@ function Get-PcSpecs {
     if ($tpm -and $tpm.SpecVersion) { $sec += 'TPM ' + ("$($tpm.SpecVersion)" -split ',')[0].Trim() }
     if ($sec.Count -gt 0) { [void]$L.Add(@{ K = 'spec.security'; V = ($sec -join ' · ') }) }
     return , $L
+}
+
+# ======================================================================
+#  ΦΑΣΗ 2α: ΕΝΗΜΕΡΩΣΕΙΣ (winget), ΑΦΑΙΡΕΣΗ ΕΦΑΡΜΟΓΩΝ, ΑΣΦΑΛΕΙΑ, ΣΧΕΔΙΟ ΕΝΕΡΓΕΙΑΣ
+# ======================================================================
+$UpdateRiskTable = @(
+    @{ P = 'Mullvad|NordVPN|ProtonVPN|ExpressVPN|Surfshark|Windscribe|CyberGhost|IPVanish|TunnelBear'; K = 'upd.r.vpn' }
+    @{ P = 'qBittorrent|uTorrent|BitTorrent|Transmission|Deluge'; K = 'upd.r.torrent' }
+    @{ P = '^Docker\.'; K = 'upd.r.docker' }
+    @{ P = '^Oracle\.VirtualBox'; K = 'upd.r.vbox' }
+    @{ P = '^Tailscale\.'; K = 'upd.r.tailscale' }
+    @{ P = '^PostgreSQL\.'; K = 'upd.r.postgres' }
+    @{ P = '^Microsoft\.VisualStudio'; K = 'upd.r.vs' }
+    @{ P = '^Adobe\.'; K = 'upd.r.adobe' }
+    @{ P = '^EpicGames\.EpicGamesLauncher|^Valve\.Steam|^Discord\.'; K = 'upd.r.self' }
+    @{ P = '^Microsoft\.WindowsInstallationAssistant|^Microsoft\.WindowsPCHealthCheck'; K = 'upd.r.skip' }
+)
+function Get-UpdateRiskCore($u) {
+    foreach ($r in $UpdateRiskTable) { if ("$($u.Id)" -match $r.P -or "$($u.Name)" -match $r.P) { return @{ Level = 2; K = $r.K; A = @() } } }
+    $a = 0; $b = 0
+    if ("$($u.Version)" -match '^(\d+)') { $a = [int64]$matches[1] }
+    if ("$($u.Available)" -match '^(\d+)') { $b = [int64]$matches[1] }
+    if ($a -gt 0 -and $b -gt $a) { return @{ Level = 1; K = 'upd.r.major'; A = @("$($u.Version)", "$($u.Available)") } }
+    return @{ Level = 0; K = 'upd.r.safe'; A = @() }
+}
+function Get-UpdateInfo {
+    $wg = Get-WingetPath
+    if (-not $wg) { return @{ NoWinget = $true; Updates = @(); Pins = @() } }
+    Set-TK -1 (T 'upd.scanning') ''
+    $r = Invoke-Native $wg 'upgrade --accept-source-agreements' '' ([Text.Encoding]::UTF8)
+    $list = @()
+    foreach ($c in @(ConvertFrom-WingetTable $r.Output)) {
+        if ($c.Count -ge 4 -and $c[1] -and $c[1] -notmatch '\s') {
+            $u = [pscustomobject]@{ Name = $c[0]; Id = $c[1]; Version = $c[2]; Available = $c[3]; Level = 0; K = ''; A = @() }
+            $k = Get-UpdateRiskCore $u; $u.Level = $k.Level; $u.K = $k.K; $u.A = $k.A
+            $list += $u
+        }
+    }
+    $p = Invoke-Native $wg 'pin list --accept-source-agreements' '' ([Text.Encoding]::UTF8)
+    $pins = @()
+    foreach ($c in @(ConvertFrom-WingetTable $p.Output)) { if ($c.Count -ge 2 -and $c[1]) { $pins += [pscustomobject]@{ Name = $c[0]; Id = $c[1] } } }
+    return @{ NoWinget = $false; Updates = @($list | Sort-Object Level, Name); Pins = $pins }
+}
+function Update-AppsCore($items) {
+    $wg = Get-WingetPath
+    $items = @($items); $ok = 0; $fail = @()
+    New-Item -ItemType Directory -Path $CoreLogs -Force | Out-Null
+    $log = Join-Path $CoreLogs ('winget-{0}.log' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        $u = $items[$i]
+        Set-TK -1 ((T 'upd.installing') -f ($i + 1), $items.Count, $u.Name) "$($u.Version) → $($u.Available)"
+        $r = Invoke-Native $wg "upgrade $(Get-WingetIdArg $u.Id) --silent --accept-package-agreements --accept-source-agreements" '' ([Text.Encoding]::UTF8)
+        Add-Content -Path $log -Encoding UTF8 -Value @("===== $($u.Name) ($($u.Id)) -> $($r.Code) =====", $r.Output)
+        if (Test-ExitOk $r.Code) { $ok++; Add-TKLog ((T 'upd.ok1') -f $u.Name) 'ok' }
+        else { $why = Get-CodeText $r.Code; $fail += [pscustomobject]@{ Name = $u.Name; Why = $why }; Add-TKLog ((T 'upd.fail') -f $u.Name, $why) 'warn' }
+        Write-AppLog "Update $($u.Name): $($r.Code)"
+    }
+    Set-TK 100 ((T 'upd.result') -f $ok, $fail.Count) ''
+    return @{ Ok = $ok; Fail = $fail; Log = $log }
+}
+function Set-PinCore([string]$id, [bool]$pin) {
+    $wg = Get-WingetPath
+    if (-not $wg) { return -1 }
+    if ($pin) { $r = Invoke-Native $wg "pin add $(Get-WingetIdArg $id) --accept-source-agreements" '' ([Text.Encoding]::UTF8) }
+    else { $r = Invoke-Native $wg "pin remove $(Get-WingetIdArg $id)" '' ([Text.Encoding]::UTF8) }
+    Write-AppLog "Pin $id -> $pin ($($r.Code))"
+    return $r.Code
+}
+
+# Προεγκατεστημένες εφαρμογές (ονόματα προϊόντων, ίδια σε όλες τις γλώσσες)
+$BloatApps = [ordered]@{
+    'Microsoft.BingNews' = 'Microsoft News'; 'Microsoft.BingWeather' = 'MSN Weather'; 'Microsoft.BingSearch' = 'Bing Search'
+    'Microsoft.GetHelp' = 'Get Help'; 'Microsoft.Getstarted' = 'Tips'; 'Microsoft.MicrosoftSolitaireCollection' = 'Solitaire Collection'
+    'Microsoft.MicrosoftOfficeHub' = 'Microsoft 365 (Office) hub'; 'Microsoft.People' = 'People'; 'Microsoft.WindowsFeedbackHub' = 'Feedback Hub'
+    'Microsoft.WindowsMaps' = 'Maps'; 'Microsoft.ZuneVideo' = 'Movies & TV'; 'Microsoft.SkypeApp' = 'Skype'; 'Microsoft.Todos' = 'Microsoft To Do'
+    'Microsoft.PowerAutomateDesktop' = 'Power Automate'; 'Microsoft.549981C3F5F10' = 'Cortana'; 'Clipchamp.Clipchamp' = 'Clipchamp'
+    'MicrosoftTeams' = 'Teams (personal)'; 'MSTeams' = 'Teams'; 'Microsoft.OutlookForWindows' = 'Outlook (new)'; 'Microsoft.Copilot' = 'Copilot'
+    'Microsoft.YourPhone' = 'Phone Link'; 'Microsoft.GamingApp' = 'Xbox'; 'Microsoft.XboxGamingOverlay' = 'Xbox Game Bar'
+}
+$BloatNotes = @{ 'Microsoft.GamingApp' = 'bl.n.xbox'; 'Microsoft.XboxGamingOverlay' = 'bl.n.gamebar'; 'Microsoft.YourPhone' = 'bl.n.phone' }
+function Get-BloatInstalled {
+    Set-TK -1 (T 'bl.loading') ''
+    $out = @()
+    foreach ($n in $BloatApps.Keys) {
+        if (Get-AppxPackage -Name $n -ErrorAction SilentlyContinue) { $out += [pscustomobject]@{ Pkg = $n; Name = $BloatApps[$n]; Note = "$($BloatNotes[$n])" } }
+    }
+    return $out
+}
+function Remove-BloatCore($items) {
+    $items = @($items); $n = 0
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        Set-TK (100.0 * $i / $items.Count) ((T 'bl.removing') -f ($i + 1), $items.Count, $items[$i].Name) ''
+        Get-AppxPackage -Name $items[$i].Pkg -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+        if (-not (Get-AppxPackage -Name $items[$i].Pkg -ErrorAction SilentlyContinue)) { $n++; Add-TKLog ((T 'bl.removed1') -f $items[$i].Name) 'ok' }
+        else { Add-TKLog ((T 'bl.failed1') -f $items[$i].Name) 'warn' }
+        Write-AppLog "Remove app: $($items[$i].Pkg)"
+    }
+    Set-TK 100 ((T 'bl.done') -f $n) ''
+    return @{ Removed = $n }
+}
+
+# Έλεγχος ασφάλειας: κάθε γραμμή = κλειδί κειμένου + κατάσταση (ok/warn/bad/info) + παράμετροι
+function Get-SecurityStatus {
+    Set-TK -1 (T 'sec.loading') ''
+    $L = [System.Collections.ArrayList]::new()
+    function Add-Sec([string]$k, [string]$s, $a = @()) { [void]$L.Add([pscustomobject]@{ K = $k; S = $s; A = @($a) }) }
+
+    $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
+    $av = @(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction SilentlyContinue | ForEach-Object { "$($_.displayName)" } | Where-Object { $_ -and $_ -notmatch 'Defender' } | Select-Object -Unique)
+    if ($mp -and $mp.RealTimeProtectionEnabled) {
+        Add-Sec 'sec.av.def' 'ok'
+        if ([int]$mp.AntivirusSignatureAge -gt 3) { Add-Sec 'sec.av.sig' 'warn' @([int]$mp.AntivirusSignatureAge) }
+    } elseif ($av.Count -gt 0) { Add-Sec 'sec.av.other' 'ok' @(($av -join ', ')) }
+    else { Add-Sec 'sec.av.none' 'bad' }
+
+    $fw = @(Get-NetFirewallProfile -ErrorAction SilentlyContinue)
+    if ($fw.Count -gt 0) {
+        $off = @($fw | Where-Object { -not $_.Enabled } | ForEach-Object { "$($_.Name)" })
+        if ($off.Count -eq 0) { Add-Sec 'sec.fw.on' 'ok' } else { Add-Sec 'sec.fw.off' 'bad' @(($off -join ', ')) }
+    }
+    if ("$(Get-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'EnableLUA')" -eq '0') { Add-Sec 'sec.uac.off' 'bad' } else { Add-Sec 'sec.uac.on' 'ok' }
+    if ("$(Get-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' 'fDenyTSConnections')" -eq '0') { Add-Sec 'sec.rdp.on' 'warn' } else { Add-Sec 'sec.rdp.off' 'ok' }
+    $smb = Get-SmbServerConfiguration -ErrorAction SilentlyContinue
+    if ($smb) { if ($smb.EnableSMB1Protocol) { Add-Sec 'sec.smb1.on' 'warn' } else { Add-Sec 'sec.smb1.off' 'ok' } }
+    try { if (Confirm-SecureBootUEFI -ErrorAction Stop) { Add-Sec 'sec.sb.on' 'ok' } else { Add-Sec 'sec.sb.off' 'warn' } } catch {}
+    $tpm = Get-CimInstance -Namespace 'root/cimv2/Security/MicrosoftTpm' -ClassName Win32_Tpm -ErrorAction SilentlyContinue
+    if ($tpm -and $tpm.SpecVersion) { Add-Sec 'sec.tpm' 'ok' @(("$($tpm.SpecVersion)" -split ',')[0].Trim()) } else { Add-Sec 'sec.tpm.none' 'info' }
+    $hf = Get-HotFix -ErrorAction SilentlyContinue | Where-Object { $_.InstalledOn } | Sort-Object InstalledOn -Descending | Select-Object -First 1
+    if ($hf) { $days = [int]((Get-Date) - $hf.InstalledOn).TotalDays; if ($days -le 40) { Add-Sec 'sec.upd.ok' 'ok' @($days) } else { Add-Sec 'sec.upd.old' 'warn' @($days) } }
+    if ("$(Get-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity' 'Enabled')" -eq '1') { Add-Sec 'sec.hvci.on' 'ok' } else { Add-Sec 'sec.hvci.off' 'info' }
+    if ("$(Get-RegValue 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' 'HideFileExt')" -eq '0') { Add-Sec 'sec.ext.shown' 'ok' } else { Add-Sec 'sec.ext.hidden' 'warn' }
+    $v = @(Get-VpnStatus | Where-Object { $_.Kind -eq 'vpn' } | ForEach-Object { $_.Name })
+    if ($v.Count -gt 0) { Add-Sec 'sec.vpn.on' 'ok' @(($v -join ' + ')) } else { Add-Sec 'sec.vpn.off' 'info' }
+    $ra = @()
+    foreach ($uk in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall')) {
+        foreach ($sub in @(Get-ChildItem -Path $uk -ErrorAction SilentlyContinue)) {
+            $n = "$((Get-ItemProperty -LiteralPath $sub.PSPath -ErrorAction SilentlyContinue).DisplayName)"
+            if ($n -match 'TeamViewer|AnyDesk|RustDesk|UltraViewer|Supremo|ScreenConnect|Splashtop|LogMeIn|Ammyy|Radmin|VNC') { $ra += ($n -replace '\s+[\d.]+$', '') }
+        }
+    }
+    if ($ra.Count -gt 0) { Add-Sec 'sec.remote' 'info' @((($ra | Select-Object -Unique) -join ', ')) }
+    Set-TK 100 (T 'sec.loaded') ''
+    return , $L
+}
+function Invoke-QuickScanCore {
+    $mpExe = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+    if (-not (Test-Path -LiteralPath $mpExe)) { Add-TKLog (T 'sec.scan.nodef') 'warn'; return @{ Code = -1 } }
+    Set-TK -1 (T 'sec.scanning') ''
+    $r = Invoke-Native $mpExe '-Scan -ScanType 1' (T 'sec.scanning')
+    $tail = @($r.Output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Last 3)
+    foreach ($l in $tail) { Add-TKLog $l 'info' }
+    Write-AppLog "Defender quick scan: $($r.Code)"
+    return @{ Code = $r.Code }
+}
+
+# Σχέδιο ενέργειας
+$PowerGuids = @{ balanced = '381b4222-f694-41f0-9685-ff5bb260df2e'; high = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' }
+function Get-PowerPlanName {
+    $g = Get-ActivePlanGuid
+    if ($g -eq $PowerGuids.balanced) { return 'balanced' }
+    if ($g -eq $PowerGuids.high) { return 'high' }
+    $u = Get-UltimateGuid; if ($u -and $g -eq $u) { return 'ultimate' }
+    return 'other'
+}
+function Set-PowerPlanCore([string]$which) {
+    $g = $null
+    if ($which -eq 'ultimate') {
+        $g = Get-UltimateGuid
+        if (-not $g) {
+            $o = "$(powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61)"
+            if ($o -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+                $g = $matches[1].ToLower()
+                New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+                Set-Content -Path (Join-Path $DataDir 'ultimate-plan.txt') -Value $g
+            }
+        }
+    } else { $g = $PowerGuids[$which] }
+    if (-not $g) { return $false }
+    powercfg /setactive $g | Out-Null
+    $ok = ((Get-ActivePlanGuid) -eq $g)
+    Write-AppLog "Power plan: $which ($ok)"
+    return $ok
 }

@@ -255,6 +255,8 @@
           <RadioButton x:Name="NavHome" Style="{StaticResource NavButton}" Tag="&#xE80F;" IsChecked="True"/>
           <RadioButton x:Name="NavClean" Style="{StaticResource NavButton}" Tag="&#xE74D;"/>
           <RadioButton x:Name="NavTweaks" Style="{StaticResource NavButton}" Tag="&#xE9E9;"/>
+          <RadioButton x:Name="NavApps" Style="{StaticResource NavButton}" Tag="&#xE71D;"/>
+          <RadioButton x:Name="NavSecurity" Style="{StaticResource NavButton}" Tag="&#xEA18;"/>
           <RadioButton x:Name="NavRepair" Style="{StaticResource NavButton}" Tag="&#xE90F;"/>
           <RadioButton x:Name="NavTools" Style="{StaticResource NavButton}" Tag="&#xE8F1;"/>
           <RadioButton x:Name="NavSettings" Style="{StaticResource NavButton}" Tag="&#xE713;"/>
@@ -386,6 +388,20 @@
             <TextBlock x:Name="TxtTweakMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
             <StackPanel x:Name="TweakList"/>
           </StackPanel>
+        </ScrollViewer>
+
+        <!-- Εφαρμογές -->
+        <ScrollViewer x:Name="PageApps" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel>
+            <WrapPanel x:Name="AppsTabs" Margin="0,0,0,10"/>
+            <TextBlock x:Name="TxtAppsMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
+            <StackPanel x:Name="AppsBody"/>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Ασφάλεια -->
+        <ScrollViewer x:Name="PageSecurity" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel x:Name="SecurityBody"/>
         </ScrollViewer>
 
         <!-- Επιδιόρθωση -->

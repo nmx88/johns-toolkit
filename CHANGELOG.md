@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.2.0
+- New **Apps** page: startup programs (on/off switches), program updates with winget (safe ones pre-ticked, risky ones explained, freeze/unfreeze) and removal of pre-installed apps.
+- New **Security** page: antivirus, firewall, UAC, Remote Desktop, SMBv1, Secure Boot, TPM, Windows Update age, memory integrity, file extensions, VPN and remote-access programs, with one-click fixes and a quick Defender scan.
+- **Power plan** (Balanced / High / Ultimate) at the top of Windows settings.
+- All new screens in 6 languages.
+
 ## v2.1.1
 - Display: real resolution and refresh rate read from each monitor (was wrong on PCs with two graphics cards); all monitors are listed.
 - Integrated graphics are shown as "integrated (uses system RAM)" instead of a misleading memory size.

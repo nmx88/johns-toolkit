@@ -21,7 +21,9 @@ A friendly, portable toolkit with a neon dark/light interface. No installation, 
 | 🧹 **Smart cleanup** | Removes only files that are *not in use* (age filter), Windows Update leftovers, error reports, crash dumps, browser cache, shader cache, `Windows.old` and more. Scan sizes first, then decide. |
 | ⚙️ **Windows settings** | 19 tweaks with on/off switches: visual effects, file extensions, faster menus, classic right-click, "End task", HAGS, Game Mode, Game DVR, mouse acceleration, ads, widgets and more. One click for all recommended, one click to restore everything. |
 | 🛠️ **Repair** | Windows Update reset (for errors like `0x80070490`), DISM + SFC system repair, restore points. Error codes are explained in plain language. |
-| 🧰 **Advanced tools** | Network & VPN diagnostics, selective program updates (winget), startup apps, bloatware removal, leftover check with backup, security check. *(classic console mode for now)* |
+| 📦 **Apps** | Startup programs on/off, program updates with winget (risky ones explained, freeze option), removal of pre-installed apps. |
+| 🛡️ **Security** | Antivirus, firewall, UAC, Remote Desktop, SMBv1, Secure Boot, TPM, VPN and remote-access check, with quick fixes and a Defender scan. |
+| 🧰 **Advanced tools** | Network & VPN diagnostics, leftover check with backup, health report, large files. *(classic console mode for now)* |
 | 🔄 **Automation** | Optional weekly background cleanup, desktop shortcut, update check. |
 | 🖥️ **Your PC** | Full specs at a glance (CPU, RAM, GPU, disks, BIOS, TPM...) with one-click copy. VPN status for Mullvad, NordVPN, Proton, ExpressVPN, Surfshark and many more. |
 | 🎨 **9 themes** | Neon cyan, Synthwave, Matrix, Cyberpunk, Ocean, Crimson, Aurora, Light and automatic. |
