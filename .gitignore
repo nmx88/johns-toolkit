@@ -1,0 +1,10 @@
+# Personal data - never commit these
+data/
+logs/
+reports/
+battery-report.html
+
+# Build output
+dist/
+JohnsToolkit.exe
+*.bak

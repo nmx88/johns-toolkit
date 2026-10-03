@@ -1,0 +1,466 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="John's Toolkit by nmx88" Width="1200" Height="780" MinWidth="1000" MinHeight="660"
+        WindowStartupLocation="CenterScreen" Background="{DynamicResource BgBrush}"
+        FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14"
+        TextOptions.TextFormattingMode="Display" UseLayoutRounding="True" SnapsToDevicePixels="True">
+  <Window.Resources>
+    <!-- Χρώματα (αλλάζουν από τον κώδικα για φωτεινό/σκοτεινό θέμα) -->
+    <Color x:Key="AccentColor">#00E5FF</Color>
+    <Color x:Key="Accent2Color">#FF2BD6</Color>
+    <SolidColorBrush x:Key="BgBrush" Color="#0A0E1A"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#0F1526"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#141C30"/>
+    <SolidColorBrush x:Key="LineBrush" Color="#22304D"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#E8F1FF"/>
+    <SolidColorBrush x:Key="SubBrush" Color="#8C9DBA"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#00E5FF"/>
+    <SolidColorBrush x:Key="Accent2Brush" Color="#FF2BD6"/>
+    <SolidColorBrush x:Key="GoodBrush" Color="#3DFF9A"/>
+    <SolidColorBrush x:Key="WarnBrush" Color="#FFC53D"/>
+    <SolidColorBrush x:Key="BadBrush" Color="#FF4D6D"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="#1A2440"/>
+    <SolidColorBrush x:Key="ActiveBrush" Color="#16233F"/>
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#06121F"/>
+
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <!-- Κάρτα -->
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="{DynamicResource CardBrush}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource LineBrush}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="14"/>
+      <Setter Property="Padding" Value="20,16"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+
+    <!-- Κουμπί μενού (αριστερά) -->
+    <Style x:Key="NavButton" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{DynamicResource SubBrush}"/>
+      <Setter Property="FontSize" Value="15"/>
+      <Setter Property="Margin" Value="0,2"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="GroupName" Value="nav"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Grid>
+              <Border x:Name="Bd" CornerRadius="10" Background="Transparent" Padding="14,11">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock x:Name="Ic" Text="{TemplateBinding Tag}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                             Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                  <ContentPresenter VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                </StackPanel>
+              </Border>
+              <Border x:Name="Bar" Width="4" CornerRadius="2" HorizontalAlignment="Left" Margin="0,8" Visibility="Collapsed"
+                      Background="{DynamicResource AccentBrush}">
+                <Border.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="14" ShadowDepth="0" Opacity="0.9"/></Border.Effect>
+              </Border>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+              </Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ActiveBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="Bar" Property="Visibility" Value="Visible"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Κύριο κουμπί (neon) -->
+    <Style x:Key="Primary" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,0,10,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" CornerRadius="10" Padding="18,10">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                  <GradientStop Color="{DynamicResource AccentColor}" Offset="0"/>
+                  <GradientStop Color="{DynamicResource Accent2Color}" Offset="1"/>
+                </LinearGradientBrush>
+              </Border.Background>
+              <Border.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="16" ShadowDepth="0" Opacity="0.55"/></Border.Effect>
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="0.88"/></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Opacity" Value="0.7"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Bd" Property="Opacity" Value="0.35"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Δευτερεύον κουμπί (περίγραμμα) -->
+    <Style x:Key="Secondary" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,0,10,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Bd" CornerRadius="10" Padding="16,9" BorderThickness="1.5" BorderBrush="{DynamicResource AccentBrush}" Background="Transparent">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Bd" Property="Opacity" Value="0.35"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Διακόπτης on/off (η λάμψη είναι μέσα στο πρότυπο, όχι σε Setter, για να μη χρειάζεται "freeze") -->
+    <Style x:Key="Switch" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Grid Width="48" Height="26">
+              <Border x:Name="Track" CornerRadius="13" Background="{DynamicResource LineBrush}"/>
+              <Border x:Name="TrackOn" CornerRadius="13" Background="{DynamicResource AccentBrush}" Visibility="Collapsed">
+                <Border.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="14" ShadowDepth="0" Opacity="0.7"/></Border.Effect>
+              </Border>
+              <Ellipse x:Name="Thumb" Width="20" Height="20" Margin="3,0" HorizontalAlignment="Left" Fill="{DynamicResource SubBrush}"/>
+              <Ellipse x:Name="ThumbOn" Width="20" Height="20" Margin="3,0" HorizontalAlignment="Right" Fill="{DynamicResource OnAccentBrush}" Visibility="Collapsed"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="TrackOn" Property="Visibility" Value="Visible"/>
+                <Setter TargetName="Thumb" Property="Visibility" Value="Collapsed"/>
+                <Setter TargetName="ThumbOn" Property="Visibility" Value="Visible"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Κουτάκι επιλογής -->
+    <Style x:Key="Check" TargetType="CheckBox">
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <Border x:Name="Box" Width="22" Height="22" CornerRadius="6" BorderThickness="1.5" BorderBrush="{DynamicResource SubBrush}" Background="Transparent">
+              <Path x:Name="Tick" Data="M 4 11 L 9 16 L 18 6" Stroke="{DynamicResource OnAccentBrush}" StrokeThickness="2.5" Visibility="Collapsed"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Επιλογή "χαπάκι" (γλώσσα, θέμα) -->
+    <Style x:Key="Pill" TargetType="RadioButton">
+      <Setter Property="Foreground" Value="{DynamicResource SubBrush}"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Margin" Value="0,0,8,8"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="RadioButton">
+            <Border x:Name="Bd" CornerRadius="16" Padding="16,7" BorderThickness="1.5" BorderBrush="{DynamicResource LineBrush}" Background="Transparent">
+              <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/></Trigger>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
+                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ActiveBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Μπάρα προόδου neon -->
+    <Style x:Key="NeonBar" TargetType="ProgressBar">
+      <Setter Property="Height" Value="8"/>
+      <Setter Property="Minimum" Value="0"/>
+      <Setter Property="Maximum" Value="100"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ProgressBar">
+            <Grid>
+              <Border x:Name="PART_Track" CornerRadius="4" Background="{DynamicResource LineBrush}"/>
+              <Border x:Name="PART_Indicator" CornerRadius="4" HorizontalAlignment="Left">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="{DynamicResource AccentColor}" Offset="0"/>
+                    <GradientStop Color="{DynamicResource Accent2Color}" Offset="1"/>
+                  </LinearGradientBrush>
+                </Border.Background>
+                <Border.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="10" ShadowDepth="0" Opacity="0.8"/></Border.Effect>
+              </Border>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="256"/>
+      <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- ===================== ΑΡΙΣΤΕΡΟ ΜΕΝΟΥ ===================== -->
+    <Border Grid.Column="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,1,0">
+      <DockPanel Margin="16,22,16,16">
+        <StackPanel DockPanel.Dock="Top" Margin="8,0,0,26">
+          <TextBlock Text="John's Toolkit" FontSize="25" FontWeight="Bold">
+            <TextBlock.Foreground>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="{DynamicResource AccentColor}" Offset="0"/>
+                <GradientStop Color="{DynamicResource Accent2Color}" Offset="1"/>
+              </LinearGradientBrush>
+            </TextBlock.Foreground>
+            <TextBlock.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="18" ShadowDepth="0" Opacity="0.6"/></TextBlock.Effect>
+          </TextBlock>
+          <TextBlock Text="by nmx88" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="2,2,0,0"/>
+          <Border CornerRadius="8" Background="{DynamicResource ActiveBrush}" Padding="10,4" Margin="0,12,0,0" HorizontalAlignment="Left">
+            <TextBlock x:Name="TxtOs" FontSize="12" Foreground="{DynamicResource AccentBrush}"/>
+          </Border>
+        </StackPanel>
+        <TextBlock x:Name="TxtVersion" DockPanel.Dock="Bottom" FontSize="11" Foreground="{DynamicResource SubBrush}" Margin="8,0,0,0"/>
+        <StackPanel>
+          <RadioButton x:Name="NavHome" Style="{StaticResource NavButton}" Tag="&#xE80F;" IsChecked="True"/>
+          <RadioButton x:Name="NavClean" Style="{StaticResource NavButton}" Tag="&#xE74D;"/>
+          <RadioButton x:Name="NavTweaks" Style="{StaticResource NavButton}" Tag="&#xE9E9;"/>
+          <RadioButton x:Name="NavRepair" Style="{StaticResource NavButton}" Tag="&#xE90F;"/>
+          <RadioButton x:Name="NavTools" Style="{StaticResource NavButton}" Tag="&#xE8F1;"/>
+          <RadioButton x:Name="NavSettings" Style="{StaticResource NavButton}" Tag="&#xE713;"/>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- ===================== ΚΥΡΙΟ ΜΕΡΟΣ ===================== -->
+    <Grid Grid.Column="1">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <Grid Grid.Row="0" Margin="36,26,36,12">
+        <StackPanel>
+          <TextBlock x:Name="PageTitle" FontSize="28" FontWeight="SemiBold"/>
+          <TextBlock x:Name="PageSub" FontSize="14" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
+        </StackPanel>
+        <Border x:Name="RestartBanner" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="10" Padding="14,8"
+                BorderThickness="1.5" BorderBrush="{DynamicResource WarnBrush}" Visibility="Collapsed">
+          <TextBlock x:Name="TxtRestart" Foreground="{DynamicResource WarnBrush}" FontWeight="SemiBold"/>
+        </Border>
+      </Grid>
+
+      <Grid Grid.Row="1" x:Name="PagesHost">
+        <!-- Αρχική -->
+        <ScrollViewer x:Name="PageHome" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20">
+          <StackPanel>
+            <UniformGrid Columns="3" Margin="0,0,0,4">
+              <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                <StackPanel>
+                  <TextBlock x:Name="GDiskT" Foreground="{DynamicResource SubBrush}"/>
+                  <TextBlock x:Name="GDiskV" FontSize="34" FontWeight="Bold" Margin="0,4"/>
+                  <ProgressBar x:Name="GDiskBar" Style="{StaticResource NeonBar}"/>
+                  <TextBlock x:Name="GDiskD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,8,0,0"/>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                <StackPanel>
+                  <TextBlock x:Name="GRamT" Foreground="{DynamicResource SubBrush}"/>
+                  <TextBlock x:Name="GRamV" FontSize="34" FontWeight="Bold" Margin="0,4"/>
+                  <ProgressBar x:Name="GRamBar" Style="{StaticResource NeonBar}"/>
+                  <TextBlock x:Name="GRamD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,8,0,0"/>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                  <TextBlock x:Name="GCpuT" Foreground="{DynamicResource SubBrush}"/>
+                  <TextBlock x:Name="GCpuV" FontSize="34" FontWeight="Bold" Margin="0,4"/>
+                  <ProgressBar x:Name="GCpuBar" Style="{StaticResource NeonBar}"/>
+                  <TextBlock x:Name="GCpuD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,8,0,0"/>
+                </StackPanel>
+              </Border>
+            </UniformGrid>
+            <Border Style="{StaticResource Card}">
+              <UniformGrid Columns="3">
+                <StackPanel>
+                  <TextBlock x:Name="InfVpnT" Foreground="{DynamicResource SubBrush}" FontSize="12"/>
+                  <TextBlock x:Name="InfVpn" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel>
+                  <TextBlock x:Name="InfUpT" Foreground="{DynamicResource SubBrush}" FontSize="12"/>
+                  <TextBlock x:Name="InfUp" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0"/>
+                </StackPanel>
+                <StackPanel>
+                  <TextBlock x:Name="InfFreedT" Foreground="{DynamicResource SubBrush}" FontSize="12"/>
+                  <TextBlock x:Name="InfFreed" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0" Foreground="{DynamicResource GoodBrush}"/>
+                </StackPanel>
+              </UniformGrid>
+            </Border>
+            <TextBlock x:Name="QuickT" FontSize="18" FontWeight="SemiBold" Margin="2,10,0,10"/>
+            <WrapPanel>
+              <Button x:Name="BtnQuickClean" Style="{StaticResource Primary}" Margin="0,0,10,10"/>
+              <Button x:Name="BtnQuickTweaks" Style="{StaticResource Secondary}" Margin="0,0,10,10"/>
+              <Button x:Name="BtnQuickRestore" Style="{StaticResource Secondary}" Margin="0,0,10,10"/>
+              <Button x:Name="BtnQuickClassic" Style="{StaticResource Secondary}" Margin="0,0,10,10"/>
+            </WrapPanel>
+            <Border Style="{StaticResource Card}" Margin="0,8,0,12">
+              <TextBlock x:Name="TxtTip" Foreground="{DynamicResource SubBrush}"/>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <Grid>
+                  <TextBlock x:Name="SpecT" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                  <Button x:Name="BtnCopySpecs" Style="{StaticResource Secondary}" HorizontalAlignment="Right" Margin="0"/>
+                </Grid>
+                <Grid x:Name="SpecGrid" Margin="0,14,0,0"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Καθαρισμός -->
+        <ScrollViewer x:Name="PageClean" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <Grid>
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                  <StackPanel>
+                    <TextBlock x:Name="TxtAgeT" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="TxtAgeD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,2,0,0"/>
+                  </StackPanel>
+                  <TextBlock x:Name="TxtAgeV" Grid.Column="1" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
+                </Grid>
+                <Slider x:Name="SldAge" Minimum="0" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,12,0,4"/>
+              </StackPanel>
+            </Border>
+            <WrapPanel Margin="0,0,0,12">
+              <Button x:Name="BtnScan" Style="{StaticResource Secondary}"/>
+              <Button x:Name="BtnClean" Style="{StaticResource Primary}"/>
+              <Button x:Name="BtnCleanDefaults" Style="{StaticResource Secondary}"/>
+              <TextBlock x:Name="TxtCleanSum" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource GoodBrush}" Margin="8,0,0,0"/>
+            </WrapPanel>
+            <StackPanel x:Name="CleanList"/>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Ρυθμίσεις Windows -->
+        <ScrollViewer x:Name="PageTweaks" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel>
+            <WrapPanel Margin="0,0,0,8">
+              <Button x:Name="BtnRec" Style="{StaticResource Primary}" Margin="0,0,10,8"/>
+              <Button x:Name="BtnRestoreAll" Style="{StaticResource Secondary}" Margin="0,0,10,8"/>
+              <Button x:Name="BtnExplorer" Style="{StaticResource Secondary}" Margin="0,0,10,8"/>
+            </WrapPanel>
+            <TextBlock x:Name="TxtTweakMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
+            <StackPanel x:Name="TweakList"/>
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- Επιδιόρθωση -->
+        <ScrollViewer x:Name="PageRepair" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel x:Name="RepairList"/>
+        </ScrollViewer>
+
+        <!-- Προηγμένα εργαλεία -->
+        <ScrollViewer x:Name="PageTools" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel x:Name="ToolsList"/>
+        </ScrollViewer>
+
+        <!-- Ρυθμίσεις εφαρμογής -->
+        <ScrollViewer x:Name="PageSettings" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock x:Name="SetLangT" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                <WrapPanel x:Name="LangPanel"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock x:Name="SetThemeT" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                <WrapPanel x:Name="ThemePanel"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,16,0">
+                  <TextBlock x:Name="SetAutoT" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="SetAutoD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
+                </StackPanel>
+                <CheckBox x:Name="ChkAuto" Grid.Column="1" Style="{StaticResource Switch}"/>
+              </Grid>
+            </Border>
+            <WrapPanel Margin="0,4,0,12">
+              <Button x:Name="BtnShortcut" Style="{StaticResource Secondary}" Margin="0,0,10,10"/>
+              <Button x:Name="BtnLogs" Style="{StaticResource Secondary}" Margin="0,0,10,10"/>
+              <Button x:Name="BtnUpdate" Style="{StaticResource Secondary}" Margin="0,0,10,10"/>
+              <Button x:Name="BtnClassic" Style="{StaticResource Secondary}" Margin="0,0,10,10"/>
+            </WrapPanel>
+            <TextBlock x:Name="TxtSetMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,12"/>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock x:Name="AboutT" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock x:Name="AboutD" Foreground="{DynamicResource SubBrush}" Margin="0,8,0,12"/>
+                <Button x:Name="BtnGithub" Style="{StaticResource Primary}" HorizontalAlignment="Left"/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <!-- ===================== ΜΠΑΡΑ ΕΡΓΑΣΙΩΝ ===================== -->
+      <Border Grid.Row="2" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0" Padding="36,12,36,12">
+        <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="280"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Center">
+              <TextBlock x:Name="TaskLabel" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+              <TextBlock x:Name="TaskDetail" FontSize="12" Foreground="{DynamicResource SubBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+            </StackPanel>
+            <ProgressBar x:Name="TaskBar" Grid.Column="1" Style="{StaticResource NeonBar}" VerticalAlignment="Center" Margin="16,0"/>
+            <Button x:Name="BtnLog" Grid.Column="2" Style="{StaticResource Secondary}" Margin="0"/>
+          </Grid>
+          <ListBox x:Name="LogList" Height="150" Margin="0,12,0,0" Visibility="Collapsed" Background="{DynamicResource CardBrush}"
+                   BorderBrush="{DynamicResource LineBrush}" FontFamily="Cascadia Mono, Consolas" FontSize="12"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>
