@@ -29,7 +29,9 @@ A friendly, portable toolkit with a neon dark/light interface. No installation, 
 | ✨ **Neon sign** | A half-broken flickering neon "Welcome" sign on Home (can be turned off). |
 | 🔄 **Automation** | Optional weekly background cleanup, desktop shortcut, update check. |
 | 🖥️ **Your PC** | Full specs at a glance (CPU, RAM, GPU, disks, BIOS, TPM...) with one-click copy. VPN status for Mullvad, NordVPN, Proton, ExpressVPN, Surfshark and many more. |
-| 🎨 **9 themes** | Neon cyan, Synthwave, Matrix, Cyberpunk, Ocean, Crimson, Aurora, Light and automatic. |
+| ⚡ **Speed test & network repair** | Download/upload/ping/jitter with history; quick network fix and full Winsock/TCP-IP reset. |
+| 🐳 **WSL / Docker** | Shrink virtual disks to give back unused space; VM, Docker and database files are protected from accidental deletion. |
+| 🎨 **14 themes + automatic** | Neon cyan, Synthwave, Matrix, Cyberpunk, Ocean, Crimson, Aurora, Vaporwave, Toxic, Ice, Gold, Sunset, Nightclub and Light, plus "same as Windows". |
 | 🌍 **6 languages** | Greek, English, German, Italian, French, Spanish. |
 
 ## 📥 Download & run
@@ -52,7 +54,7 @@ Every release includes `SHA256SUMS.txt` so you can verify your download.
 ## 🔒 Privacy
 
 - No telemetry, no accounts, nothing is uploaded.
-- Web services are contacted **only when you use the matching feature**: [ip-api.com](https://ip-api.com) (country/company of connections, free for non-commercial use), [abuse.ch](https://abuse.ch) and Emerging Threats (malicious IP lists), [Mullvad](https://mullvad.net) (VPN check), GitHub (update check). VirusTotal is only opened as a *search by file hash*; files are never uploaded.
+- Web services are contacted **only when you use the matching feature**: [ip-api.com](https://ip-api.com) (country/company of connections, free for non-commercial use), [abuse.ch](https://abuse.ch) and Emerging Threats (malicious IP lists), [Mullvad](https://mullvad.net) (VPN check), Cloudflare speed servers (speed test), GitHub (update check). VirusTotal is only opened as a *search by file hash*; files are never uploaded.
 - Your settings, logs and backups stay in the `data`, `logs` and `reports` folders next to the app.
 
 ## ↩️ Undo

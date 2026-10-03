@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.3.0'
+$AppVersion = '2.4.0'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
@@ -1027,6 +1027,12 @@ function Get-HealthStatus {
     }
     $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
     if ($os) { $up = (Get-Date) - $os.LastBootUpTime; if ($up.Days -ge 7) { [void]$L.Add([pscustomobject]@{ K = 'hl.uptime.long'; S = 'warn'; A = @($up.Days); G = 'health' }) } else { [void]$L.Add([pscustomobject]@{ K = 'hl.uptime'; S = 'ok'; A = @($up.Days, $up.Hours); G = 'health' }) } }
+    $bt = @(Get-BootTimes)
+    if ($bt.Count -gt 0) {
+        $avg = [math]::Round(($bt | Measure-Object Seconds -Average).Average, 1)
+        $st = 'ok'; if ($bt[0].Seconds -gt 90) { $st = 'warn' }
+        [void]$L.Add([pscustomobject]@{ K = 'hl.boot'; S = $st; A = @($bt[0].Seconds, $bt.Count, $avg); G = 'health' })
+    }
     if (Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue) { [void]$L.Add([pscustomobject]@{ K = 'hl.battery'; S = 'info'; A = @(); G = 'health' }) }
     return , $L
 }
@@ -1045,4 +1051,186 @@ function New-BatteryReport {
     New-Item -ItemType Directory -Path (Split-Path $rep) -Force | Out-Null
     powercfg /batteryreport /output "$rep" | Out-Null
     return $rep
+}
+
+# ======================================================================
+#  v2.4: SPEEDTEST, ΕΠΙΔΙΟΡΘΩΣΗ ΔΙΚΤΥΟΥ, ΔΙΣΚΟΙ WSL/DOCKER, ΧΡΟΝΟΣ ΕΚΚΙΝΗΣΗΣ, ΔΙΣΚΟΙ
+# ======================================================================
+function Get-FixedDrives {
+    $out = @()
+    foreach ($d in [IO.DriveInfo]::GetDrives()) {
+        try { if ($d.DriveType -eq 'Fixed' -and $d.IsReady) { $out += [pscustomobject]@{ Root = $d.RootDirectory.FullName; Letter = $d.Name.TrimEnd('\'); Label = "$($d.VolumeLabel)"; Free = [double]$d.AvailableFreeSpace; Size = [double]$d.TotalSize } } } catch {}
+    }
+    return $out
+}
+# Αρχεία που ΔΕΝ πρέπει να σβηστούν (δίσκοι εικονικών μηχανών, Docker/WSL, βάσεις δεδομένων, Outlook)
+function Test-CriticalFile([string]$path) {
+    if ($path -match '\.(vhdx|vhd|avhdx|vdi|vmdk|qcow2|nvram|vmsn|pst|ost|mdf|ldf|ndf|ibd)$') { return $true }
+    if ($path -match '\\(Docker|wsl|VirtualBox VMs|Virtual Machines|Hyper-V|PostgreSQL\\[^\\]+\\data|MySQL|MongoDB)\\') { return $true }
+    return $false
+}
+
+# ---------- Speedtest (διακομιστές της Cloudflare) ----------
+function Invoke-SpeedTest {
+    Add-Type -AssemblyName System.Net.Http
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $h = [System.Net.Http.HttpClient]::new(); $h.Timeout = [TimeSpan]::FromSeconds(60)
+    $base = 'https://speed.cloudflare.com'
+    $where = ''
+    try { $trace = $h.GetStringAsync("$base/cdn-cgi/trace").GetAwaiter().GetResult(); if ($trace -match 'colo=(\w+)') { $where = $matches[1] } } catch {}
+    Set-TK 3 (T 'sp.ping') $where
+    $lat = @()
+    for ($i = 0; $i -lt 10; $i++) {
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        try { [void]$h.GetStringAsync("$base/__down?bytes=0").GetAwaiter().GetResult(); $sw.Stop(); $lat += $sw.Elapsed.TotalMilliseconds } catch {}
+    }
+    if ($lat.Count -lt 3) { $h.Dispose(); return @{ Ok = $false } }
+    $best = @($lat | Sort-Object | Select-Object -First ($lat.Count - 2))
+    $ping = ($best | Measure-Object -Average).Average
+    $jit = 0.0; for ($i = 1; $i -lt $lat.Count; $i++) { $jit += [math]::Abs($lat[$i] - $lat[$i - 1]) }; $jit = $jit / ($lat.Count - 1)
+
+    $down = Measure-SpeedRounds $h 'down' 10 45
+    $up = Measure-SpeedRounds $h 'up' 55 45
+    $h.Dispose()
+    $r = [pscustomobject]@{ Ok = $true; Ping = [math]::Round($ping); Jitter = [math]::Round($jit, 1); Down = [math]::Round($down, 1); Up = [math]::Round($up, 1); Where = $where; When = (Get-Date).ToString('s') }
+    Set-TK 100 ((T 'sp.done') -f $r.Down, $r.Up, $r.Ping) ''
+    # ιστορικό (τελευταίες 20 μετρήσεις)
+    try {
+        $f = Join-Path $CoreData 'speedtests.json'; $hist = @()
+        if (Test-Path $f) { foreach ($x in (ConvertFrom-Json ([IO.File]::ReadAllText($f, [Text.Encoding]::UTF8)))) { if ($x.When) { $hist += $x } } }
+        $hist = @($r) + $hist | Select-Object -First 20
+        New-Item -ItemType Directory -Path $CoreData -Force | Out-Null
+        [IO.File]::WriteAllText($f, (ConvertTo-Json -InputObject @($hist) -Depth 3), (New-Object System.Text.UTF8Encoding $false))
+    } catch {}
+    Write-AppLog ("Speedtest: down {0} / up {1} Mbps, ping {2} ms" -f $r.Down, $r.Up, $r.Ping)
+    return $r
+}
+function Measure-SpeedRounds($h, [string]$dir, [double]$p0, [double]$span) {
+    $base = 'https://speed.cloudflare.com'
+    $size = 4MB; if ($dir -eq 'up') { $size = 2MB }
+    $rounds = @(); $sw = [Diagnostics.Stopwatch]::StartNew(); $limit = 8.0
+    $label = T 'sp.down'; if ($dir -eq 'up') { $label = T 'sp.up' }
+    while ($sw.Elapsed.TotalSeconds -lt $limit -and $rounds.Count -lt 30) {
+        $t0 = $sw.Elapsed.TotalSeconds
+        $tasks = New-Object 'System.Collections.Generic.List[System.Threading.Tasks.Task]'
+        if ($dir -eq 'down') { for ($i = 0; $i -lt 4; $i++) { $tasks.Add($h.GetByteArrayAsync("$base/__down?bytes=$size")) } }
+        else {
+            $data = New-Object byte[] $size; ([Random]::new()).NextBytes($data)
+            for ($i = 0; $i -lt 4; $i++) { $tasks.Add($h.PostAsync("$base/__up", [System.Net.Http.ByteArrayContent]::new($data))) }
+        }
+        $arr = $tasks.ToArray()
+        while (-not [System.Threading.Tasks.Task]::WaitAll($arr, 250)) {
+            Set-TK ($p0 + $span * [math]::Min(1, $sw.Elapsed.TotalSeconds / $limit)) $label ''
+            if ($sw.Elapsed.TotalSeconds -gt 30) { break }
+        }
+        $okCount = @($arr | Where-Object { "$($_.Status)" -eq 'RanToCompletion' }).Count
+        if ($okCount -eq 0) { break }
+        $dt = $sw.Elapsed.TotalSeconds - $t0
+        $mbps = ($okCount * [double]$size * 8) / [math]::Max(0.05, $dt) / 1e6
+        $rounds += $mbps
+        Set-TK ($p0 + $span * [math]::Min(1, $sw.Elapsed.TotalSeconds / $limit)) $label ('{0:N1} Mbps' -f $mbps)
+        if ($dt -lt 1.5 -and $size -lt 64MB) { $size *= 2 }
+    }
+    if ($rounds.Count -eq 0) { return 0 }
+    if ($rounds.Count -gt 2) { $rounds = @($rounds | Select-Object -Skip 1) }
+    # μέσος όρος των καλύτερων μισών γύρων (όπως τα περισσότερα speedtest)
+    $top = @($rounds | Sort-Object -Descending | Select-Object -First ([math]::Max(1, [math]::Ceiling($rounds.Count / 2))))
+    return ($top | Measure-Object -Average).Average
+}
+function Get-SpeedHistory {
+    $f = Join-Path $CoreData 'speedtests.json'; $out = @()
+    if (Test-Path $f) { try { foreach ($x in (ConvertFrom-Json ([IO.File]::ReadAllText($f, [Text.Encoding]::UTF8)))) { if ($x.When) { $out += $x } } } catch {} }
+    return $out
+}
+
+# ---------- Επιδιόρθωση δικτύου ----------
+function Test-Online {
+    $ip = $false; $dns = $false
+    try { $ip = [bool](Test-Connection -ComputerName 1.1.1.1 -Count 1 -Quiet -ErrorAction Stop) } catch {}
+    try { $dns = [bool](Resolve-DnsName -Name 'www.microsoft.com' -DnsOnly -QuickTimeout -ErrorAction Stop) } catch {}
+    return @{ Ip = $ip; Dns = $dns }
+}
+function Invoke-NetworkQuickFix {
+    $steps = @(
+        @{ K = 'nr.s.dns'; R = { ipconfig /flushdns | Out-Null; $LASTEXITCODE } }
+        @{ K = 'nr.s.arp'; R = { netsh interface ip delete arpcache | Out-Null; $LASTEXITCODE } }
+        @{ K = 'nr.s.renew'; R = { ipconfig /renew | Out-Null; 0 } }
+        @{ K = 'nr.s.adapters'; R = { $a = @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { "$($_.Status)" -eq 'Up' }); foreach ($x in $a) { Restart-NetAdapter -Name $x.Name -Confirm:$false -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 6; 0 } }
+    )
+    for ($i = 0; $i -lt $steps.Count; $i++) {
+        Set-TK (100.0 * $i / ($steps.Count + 1)) (T $steps[$i].K) ''
+        $code = & $steps[$i].R
+        if ("$code" -eq '0' -or -not $code) { Add-TKLog ('✓ ' + (T $steps[$i].K)) 'ok' } else { Add-TKLog ((T $steps[$i].K) + ': ' + (Get-CodeText ([int]$code))) 'warn' }
+    }
+    Set-TK 90 (T 'nr.s.test') ''
+    $t = Test-Online
+    Write-AppLog "Network quick fix: ip=$($t.Ip) dns=$($t.Dns)"
+    return $t
+}
+function Invoke-NetworkReset {
+    $cmds = @(
+        @{ K = 'nr.s.winsock'; A = 'winsock reset' }
+        @{ K = 'nr.s.ip4'; A = 'int ip reset' }
+        @{ K = 'nr.s.ip6'; A = 'int ipv6 reset' }
+        @{ K = 'nr.s.proxy'; A = 'winhttp reset proxy' }
+    )
+    $fail = 0
+    for ($i = 0; $i -lt $cmds.Count; $i++) {
+        Set-TK (100.0 * $i / ($cmds.Count + 1)) (T $cmds[$i].K) ''
+        $r = Invoke-Native "$env:WINDIR\System32\netsh.exe" $cmds[$i].A ''
+        if ((Test-ExitOk $r.Code) -or $r.Code -eq 1) { Add-TKLog ('✓ ' + (T $cmds[$i].K)) 'ok' } else { $fail++; Add-TKLog ((T $cmds[$i].K) + ': ' + (Get-CodeText $r.Code)) 'warn' }
+    }
+    ipconfig /flushdns | Out-Null
+    Set-TK 100 (T 'nr.reset.done') ''
+    Write-AppLog "Network reset (fail=$fail)"
+    return @{ Fail = $fail }
+}
+
+# ---------- Συμπίεση δίσκων WSL / Docker ----------
+function Get-WslDisks {
+    $la = $env:LOCALAPPDATA; $out = @()
+    $cands = @("$la\Docker\wsl\disk\docker_data.vhdx", "$la\Docker\wsl\data\ext4.vhdx", "$la\Docker\wsl\main\ext4.vhdx")
+    foreach ($p in @(Get-ChildItem -Path "$la\Packages" -Directory -ErrorAction SilentlyContinue)) {
+        $v = Join-Path $p.FullName 'LocalState\ext4.vhdx'; if (Test-Path -LiteralPath $v) { $cands += $v }
+    }
+    foreach ($c in $cands | Select-Object -Unique) {
+        if (Test-Path -LiteralPath $c) { $out += [pscustomobject]@{ Path = $c; Size = [double](Get-Item -LiteralPath $c -Force).Length } }
+    }
+    return $out
+}
+function Test-DockerRunning { return [bool](Get-Process -Name 'Docker Desktop', 'com.docker.backend' -ErrorAction SilentlyContinue) }
+function Invoke-CompactWslDisks($paths) {
+    $paths = @($paths); $saved = 0.0; $ok = 0
+    Set-TK 3 (T 'wsl.stopping') ''
+    $wsl = "$env:WINDIR\System32\wsl.exe"
+    if (Test-Path $wsl) { $null = Invoke-Native $wsl '--shutdown' ''; Start-Sleep -Seconds 4 }
+    for ($i = 0; $i -lt $paths.Count; $i++) {
+        $p = $paths[$i]
+        Set-TK (10 + 85.0 * $i / $paths.Count) ((T 'wsl.compacting') -f (Split-Path $p -Leaf)) ''
+        $before = [double](Get-Item -LiteralPath $p -Force).Length
+        $script = Join-Path ([IO.Path]::GetTempPath()) ('jt_diskpart_' + [guid]::NewGuid().ToString('N') + '.txt')
+        [IO.File]::WriteAllLines($script, @("select vdisk file=`"$p`"", 'attach vdisk readonly', 'compact vdisk', 'detach vdisk'))
+        $r = Invoke-Native "$env:WINDIR\System32\diskpart.exe" "/s `"$script`"" ''
+        Remove-Item -LiteralPath $script -Force -ErrorAction SilentlyContinue
+        $after = [double](Get-Item -LiteralPath $p -Force).Length
+        $gain = [math]::Max(0, $before - $after); $saved += $gain
+        if ($r.Code -eq 0) { $ok++; Add-TKLog ((T 'wsl.done1') -f (Split-Path $p -Leaf), (Format-Size $before), (Format-Size $after)) 'ok' }
+        else { Add-TKLog ((T 'wsl.fail1') -f (Split-Path $p -Leaf)) 'warn' }
+    }
+    Set-TK 100 ((T 'wsl.done') -f (Format-Size $saved)) ''
+    Write-AppLog "WSL compact: saved $(Format-Size $saved)"
+    return @{ Saved = $saved; Ok = $ok }
+}
+
+# ---------- Χρόνος εκκίνησης των Windows ----------
+function Get-BootTimes {
+    $out = @()
+    try {
+        foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'Microsoft-Windows-Diagnostics-Performance/Operational'; Id = 100 } -MaxEvents 10 -ErrorAction Stop)) {
+            $x = [xml]$e.ToXml()
+            $ms = ($x.Event.EventData.Data | Where-Object { $_.Name -eq 'BootTime' }).'#text'
+            if ($ms) { $out += [pscustomobject]@{ When = $e.TimeCreated; Seconds = [math]::Round([double]$ms / 1000, 1) } }
+        }
+    } catch {}
+    return $out
 }

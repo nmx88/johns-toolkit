@@ -1138,6 +1138,20 @@ $Tweaks = @(
            @{ P = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo'; N = 'Enabled'; T = 'DWord'; On = 0; Off = 1 }
        ) }
 
+    @{ Id = 'hibernate'; Group = 'ΣΥΣΤΗΜΑ'; Label = 'Απενεργοποίηση αδρανοποίησης (ελευθερώνει GB)'; Short = 'χωρίς αδρανοποίηση'; Recommended = $false; CustomBackup = $true
+       What = 'Σβήνει το αρχείο hiberfil.sys, που πιάνει περίπου το 40% της RAM σου (π.χ. 13 GB με 32 GB RAM).'
+       Affects = 'Χάνεις την «Αδρανοποίηση» και τη «Γρήγορη εκκίνηση». Σε laptop που το κλείνεις συχνά, καλύτερα άφησέ το.'
+       Get = { "$(Get-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' 'HibernateEnabled')" -eq '0' }
+       Set = { param($on) if ($on) { powercfg /hibernate off | Out-Null } else { powercfg /hibernate on | Out-Null } } }
+    @{ Id = 'storagesense'; Group = 'ΣΥΣΤΗΜΑ'; Label = 'Αισθητήρας αποθήκευσης (Storage Sense)'; Short = 'Storage Sense'; Recommended = $false
+       What = 'Αφήνει τα ίδια τα Windows να σβήνουν κάθε εβδομάδα τα προσωρινά αρχεία που δεν χρειάζονται.'
+       Affects = 'Δεν αγγίζει τον Κάδο Ανακύκλωσης ούτε τις Λήψεις.'
+       Reg = @(
+           @{ P = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy'; N = '01'; T = 'DWord'; On = 1; Off = 0 }
+           @{ P = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy'; N = '04'; T = 'DWord'; On = 1; Off = $null }
+           @{ P = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy'; N = '2048'; T = 'DWord'; On = 7; Off = $null }
+       ) }
+
     @{ Id = 'delivopt'; Group = 'ΔΙΚΤΥΟ'; Label = 'Χωρίς μοίρασμα ενημερώσεων με άλλους υπολογιστές'; Short = 'χωρίς μοίρασμα ενημερώσεων'; Recommended = $true
        What = 'Από προεπιλογή, τα Windows ανεβάζουν κομμάτια ενημερώσεων σε άλλους υπολογιστές (σαν torrent). Αυτό το κλείνει, ώστε όλο το upload να μένει για εσένα.'
        Affects = 'Οι ενημερώσεις κατεβαίνουν κανονικά από τη Microsoft. Χρήσιμο όταν κατεβάζεις torrent.'

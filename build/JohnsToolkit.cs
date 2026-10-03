@@ -11,8 +11,8 @@ using System.Windows.Forms;
 [assembly: AssemblyCompany("nmx88")]
 [assembly: AssemblyDescription("Cleanup, performance and repair toolkit for Windows 10/11")]
 [assembly: AssemblyCopyright("MIT License - nmx88")]
-[assembly: AssemblyVersion("2.3.0.0")]
-[assembly: AssemblyFileVersion("2.3.0.0")]
+[assembly: AssemblyVersion("2.4.0.0")]
+[assembly: AssemblyFileVersion("2.4.0.0")]
 
 static class Program
 {

@@ -30,6 +30,12 @@ $Themes = [ordered]@{
     ocean     = @{ Bg = '#04111C'; Panel = '#071A2A'; Card = '#0B2236'; Line = '#163B57'; Text = '#E3F6FF'; Sub = '#86A9C2'; Accent = '#00B3FF'; Accent2 = '#00FFC6'; Good = '#3DFFB0'; Warn = '#FFC53D'; Bad = '#FF5C7A'; Hover = '#0F2C45'; Active = '#0E2A40'; OnAccent = '#021422' }
     crimson   = @{ Bg = '#12060A'; Panel = '#1A0A10'; Card = '#231017'; Line = '#43202C'; Text = '#FFE8EE'; Sub = '#C49AA6'; Accent = '#FF2E63'; Accent2 = '#FF9E2C'; Good = '#3DFF9A'; Warn = '#FFD23F'; Bad = '#FF2E2E'; Hover = '#2E1520'; Active = '#2B121C'; OnAccent = '#1C0409' }
     aurora    = @{ Bg = '#070B14'; Panel = '#0B1120'; Card = '#10182B'; Line = '#22304A'; Text = '#EAF2FF'; Sub = '#93A3C4'; Accent = '#3DFFB5'; Accent2 = '#A855F7'; Good = '#3DFFB5'; Warn = '#FFD23F'; Bad = '#FF5C7A'; Hover = '#172036'; Active = '#142034'; OnAccent = '#04140E' }
+    vaporwave = @{ Bg = '#140B24'; Panel = '#1B1030'; Card = '#24163D'; Line = '#3E2A63'; Text = '#FFF0FB'; Sub = '#BBA6D6'; Accent = '#FF71CE'; Accent2 = '#01CDFE'; Good = '#05FFA1'; Warn = '#FFFB96'; Bad = '#FF4F79'; Hover = '#2D1C4B'; Active = '#2A1946'; OnAccent = '#1A0B26' }
+    toxic     = @{ Bg = '#0A0B06'; Panel = '#11130A'; Card = '#181B0E'; Line = '#2E3418'; Text = '#F3FFD6'; Sub = '#A3B07A'; Accent = '#B6FF00'; Accent2 = '#B026FF'; Good = '#B6FF00'; Warn = '#FFD23F'; Bad = '#FF3D57'; Hover = '#1F2312'; Active = '#1D2111'; OnAccent = '#0D1200' }
+    ice       = @{ Bg = '#06101A'; Panel = '#0A1724'; Card = '#0F1F30'; Line = '#1D3550'; Text = '#EAF8FF'; Sub = '#8FB2CC'; Accent = '#9BE7FF'; Accent2 = '#5B8CFF'; Good = '#5CFFC8'; Warn = '#FFD66B'; Bad = '#FF6B8B'; Hover = '#142A40'; Active = '#13283C'; OnAccent = '#05121C' }
+    gold      = @{ Bg = '#100C04'; Panel = '#171107'; Card = '#20180B'; Line = '#3D2E14'; Text = '#FFF6E0'; Sub = '#C2AD82'; Accent = '#FFD23F'; Accent2 = '#FF7A1A'; Good = '#7CFF6B'; Warn = '#FFB020'; Bad = '#FF4D4D'; Hover = '#2A2010'; Active = '#271E0F'; OnAccent = '#1A1200' }
+    sunset    = @{ Bg = '#14070D'; Panel = '#1C0A13'; Card = '#26101B'; Line = '#46203A'; Text = '#FFEDF2'; Sub = '#C99AAE'; Accent = '#FF6B35'; Accent2 = '#FF2E97'; Good = '#4DFFB4'; Warn = '#FFD23F'; Bad = '#FF3B3B'; Hover = '#331626'; Active = '#2F1423'; OnAccent = '#1F0710' }
+    nightclub = @{ Bg = '#08061A'; Panel = '#0D0A26'; Card = '#140F33'; Line = '#2A2058'; Text = '#F1EDFF'; Sub = '#A39BD1'; Accent = '#8B5CFF'; Accent2 = '#FF2BD6'; Good = '#3DFFB5'; Warn = '#FFD23F'; Bad = '#FF4D6D'; Hover = '#1C1645'; Active = '#1A1440'; OnAccent = '#0A0620' }
     light     = @{ Bg = '#F3F6FC'; Panel = '#FFFFFF'; Card = '#FFFFFF'; Line = '#DCE4F2'; Text = '#0E1726'; Sub = '#5A6A85'; Accent = '#00A3C4'; Accent2 = '#C21BD8'; Good = '#0E9F6E'; Warn = '#B86E00'; Bad = '#E0344E'; Hover = '#EAF1FB'; Active = '#E1F6FB'; OnAccent = '#FFFFFF' }
 }
 # Βάζει μια τιμή στους πόρους του παραθύρου ΧΩΡΙΣ το "περιτύλιγμα" του PowerShell (PSObject),
@@ -636,54 +642,99 @@ function Build-NeonSign {
     $p = $UI.NeonLetters; $p.Children.Clear()
     $pal = $App.Pal; if (-not $pal) { return }
     $acc = ConvertTo-WpfColor $pal.Accent; $acc2 = ConvertTo-WpfColor $pal.Accent2
-    $core = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc 0.55)); $core.Freeze()
+    $core = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc 0.6)); $core.Freeze()
+    $gas = [Windows.Media.SolidColorBrush]::new($acc); $gas.Opacity = 0.22; $gas.Freeze()
+    $halo = [Windows.Media.SolidColorBrush]::new($acc); $halo.Opacity = 0.45; $halo.Freeze()
     $text = T 'home.sign'
     $App.SignLetters = @()
+    $tf = $null
+    try { $tf = [Windows.Media.Typeface]::new([Windows.Media.FontFamily]::new('Segoe Script'), [Windows.FontStyles]::Normal, [Windows.FontWeights]::Bold, [Windows.FontStretches]::Normal) } catch {}
     foreach ($ch in $text.ToCharArray()) {
-        $tb = [Windows.Controls.TextBlock]::new()
-        $tb.Text = [string]$ch; $tb.FontSize = 46; $tb.FontWeight = 'Bold'
-        $tb.FontFamily = [Windows.Media.FontFamily]::new('Segoe Script, Segoe UI')
-        $tb.Foreground = $core
-        $tb.Effect = New-Glow $acc 26
-        [void]$p.Children.Add($tb)
-        $App.SignLetters += $tb
+        $cell = $null
+        if ($tf -and "$ch".Trim()) {
+            try {
+                # Γράμμα σαν σωλήνας neon: περίγραμμα του γράμματος + αέριο μέσα + εξωτερική λάμψη
+                $ft = [Windows.Media.FormattedText]::new([string]$ch, [Globalization.CultureInfo]::CurrentUICulture, [Windows.FlowDirection]::LeftToRight, $tf, 50.0, $core)
+                $geo = $ft.BuildGeometry([Windows.Point]::new(0, 0))
+                $g = [Windows.Controls.Grid]::new(); $g.Width = $ft.WidthIncludingTrailingWhitespace; $g.Height = $ft.Height
+                $back = [Windows.Shapes.Path]::new(); $back.Data = $geo; $back.Stroke = $halo; $back.StrokeThickness = 6; $back.StrokeLineJoin = 'Round'
+                $back.Effect = New-Glow $acc 34
+                $tube = [Windows.Shapes.Path]::new(); $tube.Data = $geo; $tube.Stroke = $core; $tube.StrokeThickness = 2.2; $tube.StrokeLineJoin = 'Round'; $tube.Fill = $gas
+                $tube.Effect = New-Glow $acc 12
+                [void]$g.Children.Add($back); [void]$g.Children.Add($tube)
+                $cell = $g
+            } catch { $cell = $null }
+        }
+        if (-not $cell) {
+            $tb = [Windows.Controls.TextBlock]::new()
+            $tb.Text = [string]$ch; $tb.FontSize = 46; $tb.FontWeight = 'Bold'
+            $tb.FontFamily = [Windows.Media.FontFamily]::new('Segoe Script, Segoe UI')
+            $tb.Foreground = $core; $tb.Effect = New-Glow $acc 26
+            $cell = $tb
+        }
+        [void]$p.Children.Add($cell)
+        $App.SignLetters += $cell
     }
+    # μικρή πινακίδα "OPEN" δίπλα
+    $open = [Windows.Controls.Border]::new()
+    $open.CornerRadius = 8; $open.BorderThickness = 2; $open.Padding = '9,1,9,2'; $open.Margin = '22,0,0,0'; $open.VerticalAlignment = 'Center'
+    $open.BorderBrush = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc2 0.35)); $open.Effect = New-Glow $acc2 16
+    $ot = [Windows.Controls.TextBlock]::new(); $ot.Text = T 'home.open'; $ot.FontSize = 15; $ot.FontWeight = 'Bold'
+    $ot.Foreground = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc2 0.55))
+    $open.Child = $ot
+    [void]$p.Children.Add($open); $App.SignOpen = $open
     $UI.NeonSign.BorderBrush = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc2 0.35))
-    $UI.NeonSign.Effect = New-Glow $acc2 22
-    # ένα γράμμα (όχι το πρώτο, όχι κενό) είναι "χαλασμένο"
-    $idx = @(); for ($i = 1; $i -lt $App.SignLetters.Count; $i++) { if ($App.SignLetters[$i].Text.Trim()) { $idx += $i } }
+    $UI.NeonSign.Effect = New-Glow $acc2 24
+    $idx = @(); for ($i = 1; $i -lt $App.SignLetters.Count; $i++) { if ("$($text[$i])".Trim()) { $idx += $i } }
     $App.SignBroken = -1; if ($idx.Count -gt 0) { $App.SignBroken = $idx[$App.Rand.Next($idx.Count)] }
-    $App.SignOff = @{}; $App.SignFrameOff = 0
-    if ($App.SignBroken -ge 0) { $App.SignLetters[$App.SignBroken].Opacity = 0.28 }
+    # "άναμμα": κάθε γράμμα ανάβει σε τυχαία στιγμή τα πρώτα ~1,5 δευτερόλεπτα
+    $App.SignOff = @{}; $App.SignFrameOff = 0; $App.SignTick = 0; $App.SignBoot = @{}
+    for ($i = 0; $i -lt $App.SignLetters.Count; $i++) { $App.SignBoot[$i] = $App.Rand.Next(3, 24) }
+    $App.SignBuzzAt = $App.Rand.Next(180, 420)
+    if (-not (Test-SignMotion)) { Set-SignStatic }
 }
-function Test-SignMotion { return ([bool]$App.Settings.flicker -and [System.Windows.SystemParameters]::ClientAreaAnimation) }
+function Set-SignStatic {
+    foreach ($l in @($App.SignLetters)) { $l.Opacity = 1 }
+    if ($App.SignBroken -ge 0 -and @($App.SignLetters).Count -gt $App.SignBroken) { $App.SignLetters[$App.SignBroken].Opacity = 0.28 }
+    if ($App.SignOpen) { $App.SignOpen.Opacity = 1 }
+    $UI.NeonSign.Opacity = 1
+}
+function Test-SignMotion { return [bool]$App.Settings.flicker }
 function Step-NeonSign {
     $L = @($App.SignLetters); if ($L.Count -eq 0) { return }
-    $r = $App.Rand
+    $r = $App.Rand; $App.SignTick++
+    $t = $App.SignTick
+    # "βουητό": όλη η πινακίδα σβήνει-ανάβει γρήγορα κάθε 15-30 δευτερόλεπτα
+    $buzz = ($t -ge $App.SignBuzzAt -and $t -lt $App.SignBuzzAt + 5)
+    if ($t -eq $App.SignBuzzAt + 5) { $App.SignBuzzAt = $t + $r.Next(220, 450) }
     for ($i = 0; $i -lt $L.Count; $i++) {
+        $boot = $App.SignBoot[$i]
+        if ($t -lt $boot - 3) { $L[$i].Opacity = 0.05; continue }
+        if ($t -lt $boot) { $L[$i].Opacity = @(0.05, 0.9)[$r.Next(2)]; continue }
+        if ($buzz -and ($t % 2 -eq 0)) { $L[$i].Opacity = 0.15; continue }
         if ($i -eq $App.SignBroken) {
-            # το χαλασμένο γράμμα: συνήθως σβηστό, κάνει "σπινθήρες"
             if ($App.SignOff[$i] -gt 0) { $App.SignOff[$i]--; $L[$i].Opacity = 1 }
-            elseif ($r.NextDouble() -lt 0.07) { $App.SignOff[$i] = $r.Next(1, 4); $L[$i].Opacity = 1 }
-            else { $L[$i].Opacity = 0.18 + $r.NextDouble() * 0.15 }
+            elseif ($r.NextDouble() -lt 0.09) { $App.SignOff[$i] = $r.Next(1, 4); $L[$i].Opacity = 1 }
+            else { $L[$i].Opacity = 0.15 + $r.NextDouble() * 0.2 }
             continue
         }
         if ($App.SignOff[$i] -gt 0) { $App.SignOff[$i]--; $L[$i].Opacity = 0.12; continue }
         $L[$i].Opacity = 1
-        if ($r.NextDouble() -lt 0.004) { $App.SignOff[$i] = $r.Next(1, 3) }
+        if ($r.NextDouble() -lt 0.006) { $App.SignOff[$i] = $r.Next(1, 3) }
+    }
+    if ($App.SignOpen) {
+        if ($t -lt 26) { $App.SignOpen.Opacity = 0.08 }
+        elseif ($buzz) { $App.SignOpen.Opacity = 0.2 }
+        else { $App.SignOpen.Opacity = @(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.25)[$r.Next(20)] }
     }
     if ($App.SignFrameOff -gt 0) { $App.SignFrameOff--; $UI.NeonSign.Opacity = 0.35 }
+    elseif ($buzz) { $UI.NeonSign.Opacity = @(0.3, 1)[$t % 2] }
     else { $UI.NeonSign.Opacity = 1; if ($r.NextDouble() -lt 0.003) { $App.SignFrameOff = $r.Next(1, 3) } }
 }
 function Update-SignTimer {
     if (-not $SignTimer) { return }
     if ($App.Page -eq 'Home' -and (Test-SignMotion)) { if (-not $SignTimer.IsEnabled) { $SignTimer.Start() } }
-    else {
-        if ($SignTimer.IsEnabled) { $SignTimer.Stop() }
-        foreach ($l in @($App.SignLetters)) { $l.Opacity = 1 }
-        if ($App.SignBroken -ge 0 -and @($App.SignLetters).Count -gt $App.SignBroken) { $App.SignLetters[$App.SignBroken].Opacity = 0.28 }
-        $UI.NeonSign.Opacity = 1
-    }
+    else { if ($SignTimer.IsEnabled) { $SignTimer.Stop() }; Set-SignStatic }
 }
 
 # ======================================================================
@@ -714,14 +765,14 @@ function Build-LeftoverList {
     [void]$sp.Children.Add((New-Text (T 'lo.intro') 13 'SubBrush'))
     $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,0'
     $b1 = New-Button (T 'lo.scan') 'Secondary'; $b1.Margin = '0,0,10,8'; $b1.Add_Click({ Start-LeftoverScan }); [void]$wp.Children.Add($b1)
-    if (@($App.Leftovers).Count -gt 0) {
-        $n = @($App.Leftovers | Where-Object { $App.LeftSel[$App.Leftovers.IndexOf($_)] }).Count
+    if ($App.Leftovers -and $App.Leftovers.Count -gt 0) {
+        $n = 0; for ($j = 0; $j -lt $App.Leftovers.Count; $j++) { if ($App.LeftSel[$j]) { $n++ } }
         $b2 = New-Button ((T 'lo.remove') -f $n) 'Primary'; $b2.Margin = '0,0,10,8'; $b2.Add_Click({ Start-LeftoverRemove }); [void]$wp.Children.Add($b2)
     }
     if ($App.LeftMsg) { $m = New-Text $App.LeftMsg 13 'GoodBrush' 'SemiBold'; $m.Margin = '0,4,0,0'; [void]$sp.Children.Add($m) }
     [void]$sp.Children.Add($wp); $card.Child = $sp; [void]$p.Children.Add($card)
     if ($null -eq $App.Leftovers) { [void]$p.Children.Add((New-Text (T 'lo.notscanned') 14 'SubBrush')) }
-    elseif (@($App.Leftovers).Count -eq 0) { [void]$p.Children.Add((New-Text (T 'lo.none') 15 'GoodBrush' 'SemiBold')) }
+    elseif ($App.Leftovers.Count -eq 0) { [void]$p.Children.Add((New-Text (T 'lo.none') 15 'GoodBrush' 'SemiBold')) }
     else {
         $grp = $null
         for ($i = 0; $i -lt $App.Leftovers.Count; $i++) {
@@ -787,21 +838,28 @@ function Build-BigList {
     $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
     [void]$sp.Children.Add((New-Text (T 'bf.intro') 13 'SubBrush'))
     $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,4'
-    $locs = [ordered]@{ user = $env:USERPROFILE; downloads = (Join-Path $env:USERPROFILE 'Downloads'); c = "$env:SystemDrive\"; pick = '' }
-    foreach ($k in $locs.Keys) {
-        $rb = New-Pill (T "bf.loc.$k") $k 'bigloc' ($k -eq $App.BigLoc)
+    $locs = [System.Collections.ArrayList]::new()
+    [void]$locs.Add(@('user', (T 'bf.loc.user'))); [void]$locs.Add(@('downloads', (T 'bf.loc.downloads')))
+    foreach ($dv in @(Get-FixedDrives)) {
+        $lbl = (T 'bf.loc.drive') -f $dv.Letter, (Format-Size $dv.Free); if ($dv.Label) { $lbl = "$($dv.Label) ($lbl)" }
+        [void]$locs.Add(@($dv.Root, $lbl))
+    }
+    [void]$locs.Add(@('pick', (T 'bf.loc.pick')))
+    foreach ($l in $locs) {
+        $rb = New-Pill $l[1] $l[0] 'bigloc' ($l[0] -eq $App.BigLoc)
         $rb.Add_Checked({ $App.BigLoc = [string]$this.Tag })
         [void]$wp.Children.Add($rb)
     }
     [void]$sp.Children.Add($wp)
     $b = New-Button (T 'bf.scan') 'Primary'; $b.HorizontalAlignment = 'Left'
     $b.Add_Click({
-        $root = switch ($App.BigLoc) { 'user' { $env:USERPROFILE } 'downloads' { Join-Path $env:USERPROFILE 'Downloads' } 'c' { "$env:SystemDrive\" } default { Select-Folder } }
+        $root = switch ($App.BigLoc) { 'user' { $env:USERPROFILE } 'downloads' { Join-Path $env:USERPROFILE 'Downloads' } 'pick' { Select-Folder } default { $App.BigLoc } }
         if (-not $root) { return }
         Start-Task 'bf.scanning' 'Find-BigFilesCore $TK.Args.Root' @{ Root = $root } { param($TK); $App.Big = $TK.Result; Build-BigList }
     })
     [void]$sp.Children.Add($b)
     $card.Child = $sp; [void]$p.Children.Add($card)
+    Add-WslCard $p
     if (-not $App.Big) { return }
     [void]$p.Children.Add((New-GroupHeader ((T 'bf.result') -f @($App.Big.Files).Count, $App.Big.Root)))
     foreach ($f in @($App.Big.Files)) {
@@ -809,12 +867,16 @@ function Build-BigList {
         $s = [Windows.Controls.StackPanel]::new()
         [void]$s.Children.Add((New-Text ("$(Format-Size $f.Size)   $($f.Name)") 15 'TextBrush' 'SemiBold'))
         $d = New-Text ("$($f.Dir) · $($f.Date.ToString('d', (Get-LangCulture)))") 12 'SubBrush'; $d.Margin = '0,2,0,0'; [void]$s.Children.Add($d)
+        $crit = Test-CriticalFile $f.Path
+        if ($crit) { $w = New-Text ('⚠ ' + (T 'bf.crit')) 12 'BadBrush' 'SemiBold'; $w.Margin = '0,4,0,0'; [void]$s.Children.Add($w) }
         $btns = [Windows.Controls.StackPanel]::new(); $btns.Orientation = 'Horizontal'
         $o = New-Button (T 'bf.open') 'Secondary'; $o.Tag = $f.Path; $o.Add_Click({ Start-Process explorer.exe -ArgumentList "/select,`"$([string]$this.Tag)`"" }); [void]$btns.Children.Add($o)
         $r = New-Button (T 'bf.recycle') 'Secondary'; $r.Tag = $f.Path; $r.Margin = '0'
         $r.Add_Click({
             $path = [string]$this.Tag
-            if (-not (Confirm-Box ((T 'bf.recycle.confirm') -f (Split-Path $path -Leaf)))) { return }
+            $q = (T 'bf.recycle.confirm') -f (Split-Path $path -Leaf)
+            if (Test-CriticalFile $path) { $q = (T 'bf.crit.confirm') -f (Split-Path $path -Leaf) }
+            if (-not (Confirm-Box $q)) { return }
             try {
                 Add-Type -AssemblyName Microsoft.VisualBasic
                 [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($path, 'OnlyErrorDialogs', 'SendToRecycleBin')
@@ -825,6 +887,84 @@ function Build-BigList {
         [void]$btns.Children.Add($r)
         $c.Child = (New-Row $s $btns); [void]$p.Children.Add($c)
     }
+}
+
+# ---------- Speedtest & επιδιόρθωση δικτύου (κάρτες στη σελίδα Δίκτυο) ----------
+function Add-SpeedCard($p) {
+    $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
+    [void]$sp.Children.Add((New-Text (T 'sp.t') 16 'TextBrush' 'SemiBold'))
+    $d = New-Text (T 'sp.d') 12 'SubBrush'; $d.Margin = '0,2,0,10'; [void]$sp.Children.Add($d)
+    $last = $App.Speed
+    if (-not $last) { $h = @(Get-SpeedHistory); if ($h.Count -gt 0) { $last = $h[0] } }
+    if ($last) {
+        $grid = [Windows.Controls.Grid]::new()
+        foreach ($i in 0..3) { $cd = [Windows.Controls.ColumnDefinition]::new(); $cd.Width = '*'; [void]$grid.ColumnDefinitions.Add($cd) }
+        $vals = @(@('sp.l.down', ('{0}' -f $last.Down), 'Mbps', 'AccentBrush'), @('sp.l.up', ('{0}' -f $last.Up), 'Mbps', 'Accent2Brush'), @('sp.l.ping', ('{0}' -f $last.Ping), 'ms', 'TextBrush'), @('sp.l.jitter', ('{0}' -f $last.Jitter), 'ms', 'TextBrush'))
+        for ($i = 0; $i -lt 4; $i++) {
+            $col = [Windows.Controls.StackPanel]::new()
+            [void]$col.Children.Add((New-Text (T $vals[$i][0]) 12 'SubBrush'))
+            $num = New-Text ("$($vals[$i][1]) $($vals[$i][2])") 26 $vals[$i][3] 'Bold'; [void]$col.Children.Add($num)
+            [Windows.Controls.Grid]::SetColumn($col, $i); [void]$grid.Children.Add($col)
+        }
+        [void]$sp.Children.Add($grid)
+        $when = ''; try { $when = ([datetime]$last.When).ToString('g', (Get-LangCulture)) } catch {}
+        $meta = (T 'sp.meta') -f $when, $last.Where
+        $vpn = @(Get-VpnStatus | Where-Object { $_.Kind -eq 'vpn' } | ForEach-Object { $_.Name })
+        if ($vpn.Count -gt 0) { $meta += ' · ' + ((T 'sp.viavpn') -f ($vpn -join ' + ')) }
+        $m = New-Text $meta 12 'SubBrush'; $m.Margin = '0,8,0,0'; [void]$sp.Children.Add($m)
+        $hist = @(Get-SpeedHistory | Select-Object -Skip 1 -First 4)
+        if ($hist.Count -gt 0) {
+            $ht = (T 'sp.history') + '  ' + (($hist | ForEach-Object { '↓{0} ↑{1}' -f $_.Down, $_.Up }) -join '   ·   ')
+            $hh = New-Text $ht 11 'SubBrush'; $hh.Margin = '0,4,0,0'; [void]$sp.Children.Add($hh)
+        }
+    }
+    $b = New-Button (T 'sp.run') 'Primary'; $b.HorizontalAlignment = 'Left'; $b.Margin = '0,12,0,0'
+    $b.Add_Click({ Start-Task 'sp.running' 'Invoke-SpeedTest' @{} { param($TK); if ($TK.Result -and $TK.Result.Ok) { $App.Speed = $TK.Result } else { Show-Info (T 'sp.fail') }; Build-NetPage } })
+    [void]$sp.Children.Add($b)
+    $card.Child = $sp; [void]$p.Children.Add($card)
+}
+function Add-NetRepairCard($p) {
+    $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
+    [void]$sp.Children.Add((New-Text (T 'nr.t') 16 'TextBrush' 'SemiBold'))
+    $d = New-Text (T 'nr.d') 12 'SubBrush'; $d.Margin = '0,2,0,0'; [void]$sp.Children.Add($d)
+    $a = New-Text ('↳ ' + (T 'nr.a')) 12 'Accent2Brush'; $a.Margin = '0,6,0,0'; [void]$sp.Children.Add($a)
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,0'
+    $b1 = New-Button (T 'nr.quick') 'Primary'; $b1.Margin = '0,0,10,8'
+    $b1.Add_Click({
+        if (-not (Confirm-Box (T 'nr.quick.confirm'))) { return }
+        Start-Task 'nr.quick' 'Invoke-NetworkQuickFix' @{} {
+            param($TK); $r = $TK.Result
+            if ($r -and $r.Ip -and $r.Dns) { Show-Info (T 'nr.ok') } elseif ($r -and $r.Ip) { Show-Info (T 'nr.nodns') } else { Show-Info (T 'nr.offline') }
+        }
+    }); [void]$wp.Children.Add($b1)
+    $b2 = New-Button (T 'nr.reset') 'Secondary'; $b2.Margin = '0,0,10,8'
+    $b2.Add_Click({
+        if (-not (Confirm-Box (T 'nr.reset.confirm'))) { return }
+        Start-Task 'nr.reset' 'Invoke-NetworkReset' @{} { param($TK); $App.NeedsRestart = $true; $UI.RestartBanner.Visibility = 'Visible'; Show-Info (T 'nr.reset.after') }
+    }); [void]$wp.Children.Add($b2)
+    $b3 = New-Button (T 'nr.ts') 'Secondary'; $b3.Margin = '0,0,10,8'; $b3.Add_Click({ Start-Process 'ms-settings:troubleshoot' }); [void]$wp.Children.Add($b3)
+    [void]$sp.Children.Add($wp)
+    $card.Child = $sp; [void]$p.Children.Add($card)
+}
+
+# ---------- Συμπίεση δίσκων WSL/Docker (στα Μεγάλα αρχεία) ----------
+function Add-WslCard($p) {
+    $disks = @(Get-WslDisks)
+    if ($disks.Count -eq 0) { return }
+    $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
+    [void]$sp.Children.Add((New-Text (T 'wsl.t') 16 'TextBrush' 'SemiBold'))
+    $d = New-Text (T 'wsl.d') 12 'SubBrush'; $d.Margin = '0,2,0,6'; [void]$sp.Children.Add($d)
+    foreach ($x in $disks) { [void]$sp.Children.Add((New-Text ("• $(Format-Size $x.Size)   $($x.Path)") 12 'TextBrush')) }
+    $a = New-Text ('↳ ' + (T 'wsl.a')) 12 'Accent2Brush'; $a.Margin = '0,6,0,0'; [void]$sp.Children.Add($a)
+    $b = New-Button (T 'wsl.btn') 'Primary'; $b.HorizontalAlignment = 'Left'; $b.Margin = '0,12,0,0'
+    $b.Add_Click({
+        if (Test-DockerRunning) { Show-Info (T 'wsl.docker'); return }
+        if (-not (Confirm-Box (T 'wsl.confirm'))) { return }
+        $paths = @(Get-WslDisks | ForEach-Object { $_.Path })
+        Start-Task 'wsl.running' 'Invoke-CompactWslDisks $TK.Args.Paths' @{ Paths = $paths } { param($TK); if ($TK.Result) { Show-Info ((T 'wsl.done') -f (Format-Size $TK.Result.Saved)) }; Build-BigList }
+    })
+    [void]$sp.Children.Add($b)
+    $card.Child = $sp; [void]$p.Children.Add($card)
 }
 
 # ======================================================================
@@ -852,6 +992,8 @@ function Build-NetPage {
     $geo.Add_Click({ $App.Settings.netGeo = [bool]$this.IsChecked; Save-AppSettings $App.Settings })
     [void]$geoRow.Children.Add($geo); [void]$geoRow.Children.Add($geoT); [void]$sp.Children.Add($geoRow)
     $card.Child = $sp; [void]$p.Children.Add($card)
+    Add-SpeedCard $p
+    Add-NetRepairCard $p
 
     # ζωντανή παρακολούθηση
     $mc = New-Card; $ms = [Windows.Controls.StackPanel]::new()
@@ -888,11 +1030,11 @@ function Build-NetPage {
         foreach ($f in @($r.Flags)) { $ft = T $f.K; if (@($f.A).Count) { $ft = $ft -f @($f.A) }; $fl = New-Text ('! ' + $ft) 12 $lvBrush; $fl.Margin = '0,3,0,0'; [void]$s.Children.Add($fl) }
         $btn = New-Button (T 'net.details') 'Secondary'; $btn.Tag = $r.PID
         $btn.Add_Click({ if ($App.NetOpen -eq [int]$this.Tag) { $App.NetOpen = -1 } else { $App.NetOpen = [int]$this.Tag }; Build-NetPage })
-        $c.Child = (New-Row $s $btn)
+        $row = New-Row $s $btn
         if ($App.NetOpen -eq $r.PID) {
-            $outer = [Windows.Controls.StackPanel]::new(); [void]$outer.Children.Add($c.Child)
+            $outer = [Windows.Controls.StackPanel]::new(); [void]$outer.Children.Add($row)
             [void]$outer.Children.Add((New-NetDetails $r)); $c.Child = $outer
-        }
+        } else { $c.Child = $row }
         [void]$p.Children.Add($c)
     }
     if (@($d.Listen).Count -gt 0) {

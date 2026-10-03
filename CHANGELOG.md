@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.4.0
+- **Neon sign 2.0**: real neon-tube letters (outlined glyphs with glowing gas inside and an outer halo), power-on sequence when the app opens, a half-broken letter, a periodic "buzz" and a small flickering "OPEN" sign. Fix: it did not flicker when "Fewer visual effects" was on.
+- **Internet speed test** (download, upload, ping, jitter) with server location and history.
+- **Network repair**: quick fix (DNS/ARP cache, renew IP, restart adapters, connection test) and full reset (Winsock, TCP/IP, proxy).
+- **Large files**: choose any disk; files of virtual machines, Docker/WSL, databases and Outlook are marked as critical and need an extra confirmation.
+- **Shrink WSL/Docker virtual disks** (compact vhdx) to give back unused space.
+- **Startup time** of Windows in Health; new settings: turn off hibernation, Storage Sense.
+- 6 new neon themes: Vaporwave, Toxic, Ice, Gold, Sunset, Nightclub (14 themes in total).
+- Fixes: the Leftovers tab stayed empty; "Details" on the Network page would have crashed.
+
 ## v2.3.0
 - **Neon "Welcome" sign** on Home: glowing letters in the theme colours, one half-broken letter that sputters and an occasional flicker, like a real bar sign. Can be turned off in Settings (and stays still when Windows animations are off).
 - New **Network & VPN** page: every program connected to the internet, VPN/leak check (any VPN, not only Mullvad), known malicious IPs, details per program (open folder, Defender scan, VirusTotal search, trust, end program), listening ports, live monitoring with a beep on red, HTML report.
