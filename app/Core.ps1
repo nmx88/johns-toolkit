@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.2.0'
+$AppVersion = '2.3.0'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
@@ -814,4 +814,235 @@ function Set-PowerPlanCore([string]$which) {
     $ok = ((Get-ActivePlanGuid) -eq $g)
     Write-AppLog "Power plan: $which ($ok)"
     return $ok
+}
+
+# ======================================================================
+#  ΦΑΣΗ 2β: ΔΙΚΤΥΟ & VPN, ΥΠΟΛΕΙΜΜΑΤΑ, ΜΕΓΑΛΑ ΑΡΧΕΙΑ, ΥΓΕΙΑ ΔΙΣΚΩΝ
+# ======================================================================
+$VpnClientProc = '^(mullvad|nordvpn|nordlynx|protonvpn|expressvpn|surfshark|pia|cyberghost|ipvanish|windscribe|warp-svc|openvpn|wireguard|tunnelbear)'
+
+function Get-ThreatSetCore {
+    New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+    $cache = Join-Path $DataDir 'threat-ips.txt'
+    $fresh = (Test-Path $cache) -and (((Get-Date) - (Get-Item $cache).LastWriteTime).TotalHours -lt 24)
+    if (-not $fresh) {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $all = New-Object System.Collections.Generic.List[string]
+        foreach ($feed in $ThreatFeeds) {
+            Set-TK -1 (T 'net.lists') $feed.Name
+            try {
+                $txt = (Invoke-WebRequest -Uri $feed.Url -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop).Content
+                if ($txt -is [byte[]]) { $txt = [Text.Encoding]::ASCII.GetString($txt) }
+                foreach ($line in ("$txt" -split "`n")) { $l = $line.Trim(); if ($l -match '^\d{1,3}(\.\d{1,3}){3}$') { $all.Add($l) } }
+            } catch { Add-TKLog ((T 'net.listfail') -f $feed.Name) 'warn' }
+        }
+        if ($all.Count -gt 0) { [IO.File]::WriteAllLines($cache, $all) }
+    }
+    $set = New-Object 'System.Collections.Generic.HashSet[string]'
+    if (Test-Path $cache) { foreach ($l in [IO.File]::ReadAllLines($cache)) { [void]$set.Add($l) } }
+    return , $set
+}
+
+function Get-NetReportCore([bool]$geo) {
+    function Write-Note([string]$t) { Add-TKLog (T 'net.geofail') 'warn' }
+    $st = Get-MullvadStatus
+    $vpnNames = @(Get-VpnStatus | Where-Object { $_.Kind -eq 'vpn' } | ForEach-Object { $_.Name })
+    $vpnIps = @(Get-VpnIps)
+    $threat = Get-ThreatSetCore
+    $trusted = @(Get-TrustedList)
+    $conns = @(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | Where-Object { -not (Test-PrivateIp $_.RemoteAddress) })
+    $ipInfo = @{}
+    if ($geo) { Set-TK -1 (T 'net.geo') ''; $ipInfo = Get-IpInfo @($conns | ForEach-Object { "$($_.RemoteAddress)" }) }
+    $groups = @($conns | Group-Object OwningProcess)
+    $out = @(); $gi = 0
+    foreach ($g in $groups) {
+        $gi++; Set-TK (100.0 * $gi / [Math]::Max(1, $groups.Count)) (T 'net.analyzing') "$gi/$($groups.Count)"
+        $procId = [int]$g.Name
+        $pi = Get-ProcInfo $procId
+        $isTorrent = ("$($pi.Name)" -match $TorrentApps)
+        $isTrusted = [bool]($pi.Path -and ($trusted -contains "$($pi.Path)".ToLower()))
+        $flags = @(); $level = 0
+        $bad = @($g.Group | Where-Object { $threat.Contains("$($_.RemoteAddress)") })
+        if ($bad.Count -gt 0) {
+            $ips = (@($bad | ForEach-Object { "$($_.RemoteAddress)" }) | Select-Object -Unique) -join ', '
+            if ($isTorrent) { $flags += @{ K = 'net.f.threat.torrent'; A = @($bad.Count, $ips) }; if ($level -lt 1) { $level = 1 } }
+            else { $flags += @{ K = 'net.f.threat'; A = @($ips) }; $level = 2 }
+        }
+        if ($vpnIps.Count -gt 0 -and "$($pi.Name)" -notmatch $VpnClientProc) {
+            $outside = @($g.Group | Where-Object { $vpnIps -notcontains "$($_.LocalAddress)" })
+            if ($outside.Count -gt 0) {
+                if ($isTorrent) { $flags += @{ K = 'net.f.torrentleak'; A = @($outside.Count) }; $level = 2 }
+                elseif (-not $isTrusted) { $flags += @{ K = 'net.f.outside'; A = @($outside.Count) }; if ($level -lt 1) { $level = 1 } }
+            }
+        }
+        if (-not $isTrusted) {
+            if ($pi.Unsigned) { $flags += @{ K = 'net.f.unsigned'; A = @() }; if ($level -lt 1) { $level = 1 } }
+            if ("$($pi.Path)" -match '\\(Temp|Downloads)\\') { $flags += @{ K = 'net.f.temp'; A = @() }; $level = 2 }
+            if ("$($pi.Name)" -match $RemoteAccessApps) { $flags += @{ K = 'net.f.remote'; A = @() }; if ($pi.Unsigned) { $level = 2 } elseif ($level -lt 1) { $level = 1 } }
+            foreach ($port in (@($g.Group | ForEach-Object { [int]$_.RemotePort }) | Select-Object -Unique)) {
+                if ($SuspiciousPorts.ContainsKey($port)) { $flags += @{ K = 'net.f.port'; A = @($port) }; if ($pi.Unsigned) { $level = 2 } elseif ($level -lt 1) { $level = 1 } }
+            }
+        }
+        $sigKey = 'net.sig.unknown'; if ($pi.Publisher) { $sigKey = 'net.sig.ok' } elseif ($pi.Unsigned) { $sigKey = 'net.sig.none' }
+        $dest = ''
+        if ($ipInfo.Count -gt 0) {
+            $names = foreach ($c in $g.Group) { $i = $ipInfo["$($c.RemoteAddress)"]; if ($i) { "$($i.Org) ($($i.Code))" } }
+            $dest = (@($names) | Group-Object | Sort-Object Count -Descending | Select-Object -First 3 | ForEach-Object { "$($_.Name) ×$($_.Count)" }) -join ', '
+        }
+        $cl = @()
+        foreach ($c in ($g.Group | Select-Object -First 30)) {
+            $via = ''; if ($vpnIps.Count -gt 0) { if ($vpnIps -contains "$($c.LocalAddress)") { $via = 'vpn' } else { $via = 'out' } }
+            $i = $ipInfo["$($c.RemoteAddress)"]; $org = ''; if ($i) { $org = "$($i.Org), $($i.Country)" }
+            $cl += [pscustomobject]@{ Ip = "$($c.RemoteAddress)"; Port = [int]$c.RemotePort; Via = $via; Org = $org; Bad = $threat.Contains("$($c.RemoteAddress)") }
+        }
+        $out += [pscustomobject]@{ Level = $level; Name = "$($pi.Name)"; PID = $procId; Count = $g.Count; SigKey = $sigKey; Publisher = "$($pi.Publisher)"
+                                   Path = "$($pi.Path)"; Trusted = $isTrusted; Flags = $flags; Dest = $dest; Conns = $cl }
+    }
+    $listen = @()
+    foreach ($lg in (@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { "$($_.LocalAddress)" -eq '0.0.0.0' -or "$($_.LocalAddress)" -eq '::' }) | Group-Object OwningProcess)) {
+        $pn = (Get-Process -Id ([int]$lg.Name) -ErrorAction SilentlyContinue).ProcessName; if (-not $pn) { $pn = "PID $($lg.Name)" }
+        $listen += [pscustomobject]@{ Name = $pn; Ports = ((@($lg.Group | ForEach-Object { [int]$_.LocalPort }) | Sort-Object -Unique) -join ', ') }
+    }
+    Set-TK 100 ((T 'net.done') -f $conns.Count, $out.Count) ''
+    $status = $null
+    if ($st) { $status = [pscustomobject]@{ Ip = "$($st.ip)"; Country = "$($st.country)"; City = "$($st.city)"; Mullvad = [bool]$st.mullvad_exit_ip; Server = "$($st.mullvad_exit_ip_hostname)"; Org = "$($st.organization)" } }
+    return @{ Report = @($out | Sort-Object @{ e = 'Level'; Descending = $true }, @{ e = 'Count'; Descending = $true }); Listen = $listen; Status = $status
+              VpnNames = $vpnNames; VpnIps = $vpnIps; ThreatCount = $threat.Count; Threat = $threat; Total = $conns.Count; When = (Get-Date) }
+}
+
+function Export-NetReportCore($data) {
+    $dir = Join-Path $AppRoot 'reports'
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $file = Join-Path $dir ('network-{0}.html' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
+    function ConvertTo-HtmlText([string]$t) { [System.Net.WebUtility]::HtmlEncode($t) }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append("<!DOCTYPE html><html lang=""$script:LangCode""><head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width, initial-scale=1""><title>$(ConvertTo-HtmlText (T 'net.rep.title'))</title><style>")
+    [void]$sb.Append('body{font-family:"Segoe UI",Arial,sans-serif;margin:24px;background:#0A0E1A;color:#E8F1FF}h1{margin:0 0 4px;color:#00E5FF}p.meta{color:#8C9DBA}.vpn{padding:10px 14px;border-radius:10px;margin:14px 0;font-weight:600}.ok{background:#0f2e22;color:#3DFF9A}.bad{background:#3a1220;color:#FF4D6D}')
+    [void]$sb.Append('table{border-collapse:collapse;width:100%;background:#141C30;border-radius:10px;overflow:hidden}th,td{padding:8px 10px;text-align:left;vertical-align:top;font-size:14px;border-bottom:1px solid #22304D}th{background:#0F1526;color:#8C9DBA}.l1 td:first-child{border-left:5px solid #FFC53D}.l2 td:first-child{border-left:5px solid #FF4D6D}.l0 td:first-child{border-left:5px solid #3DFF9A}small{color:#8C9DBA}ul{margin:0;padding-left:18px}</style></head><body>')
+    [void]$sb.Append("<h1>John's Toolkit · $(ConvertTo-HtmlText (T 'net.rep.title'))</h1><p class=""meta"">$((Get-Date).ToString('f', (Get-LangCulture))) · $(ConvertTo-HtmlText $env:COMPUTERNAME) · $(ConvertTo-HtmlText ((T 'net.threatcount') -f $data.ThreatCount))</p>")
+    if ($data.Status) {
+        if (@($data.VpnNames).Count -gt 0) { [void]$sb.Append("<div class=""vpn ok"">$(ConvertTo-HtmlText ((T 'net.vpn.on') -f (@($data.VpnNames) -join ' + '), $data.Status.Ip, $data.Status.Country))</div>") }
+        else { [void]$sb.Append("<div class=""vpn bad"">$(ConvertTo-HtmlText ((T 'net.vpn.off') -f $data.Status.Ip, $data.Status.Country))</div>") }
+    }
+    [void]$sb.Append("<table><tr><th>$(ConvertTo-HtmlText (T 'net.col.state'))</th><th>$(ConvertTo-HtmlText (T 'net.col.prog'))</th><th>$(ConvertTo-HtmlText (T 'net.col.conns'))</th><th>$(ConvertTo-HtmlText (T 'net.col.sig'))</th><th>$(ConvertTo-HtmlText (T 'net.col.dest'))</th><th>$(ConvertTo-HtmlText (T 'net.col.flags'))</th></tr>")
+    foreach ($r in $data.Report) {
+        $fl = ''
+        if (@($r.Flags).Count -gt 0) { $fl = '<ul>' + ((@($r.Flags) | ForEach-Object { $t = T $_.K; if (@($_.A).Count) { $t = $t -f @($_.A) }; "<li>$(ConvertTo-HtmlText $t)</li>" }) -join '') + '</ul>' }
+        $sig = T $r.SigKey; if ($r.Publisher) { $sig += ": $($r.Publisher)" }
+        [void]$sb.Append("<tr class=""l$($r.Level)""><td>$(ConvertTo-HtmlText (T ('net.lv.' + $r.Level)))</td><td><b>$(ConvertTo-HtmlText $r.Name)</b><br><small>$(ConvertTo-HtmlText $r.Path)</small></td><td>$($r.Count)</td><td>$(ConvertTo-HtmlText $sig)</td><td>$(ConvertTo-HtmlText $r.Dest)</td><td>$fl</td></tr>")
+    }
+    [void]$sb.Append("</table><p class=""meta"">$(ConvertTo-HtmlText (T 'net.rep.note'))</p></body></html>")
+    [IO.File]::WriteAllText($file, $sb.ToString(), (New-Object System.Text.UTF8Encoding $true))
+    return $file
+}
+
+function Invoke-FileScanCore([string]$path) {
+    $mpExe = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+    if (-not (Test-Path -LiteralPath $mpExe)) { return -1 }
+    Set-TK -1 (T 'net.scanning') (Split-Path $path -Leaf)
+    $r = Invoke-Native $mpExe "-Scan -ScanType 3 -File `"$path`"" ''
+    Write-AppLog "Defender file scan $path -> $($r.Code)"
+    return $r.Code
+}
+
+# ---------- Υπολείμματα (χρησιμοποιεί τον κλασικό μηχανισμό με αντίγραφα, με μηνύματα στη γλώσσα της εφαρμογής) ----------
+function Find-LeftoversCore {
+    function Start-Progress([string]$l) { Set-TK -1 (T 'lo.scanning') '' }
+    function Update-Progress([double]$pct = -1, [string]$detail = '', [switch]$Force) { if ($TK) { $TK.Pct = $pct } }
+    function Stop-Progress { }
+    $r = @(Find-Leftovers)
+    Set-TK 100 ((T 'lo.found') -f $r.Count) ''
+    return , $r
+}
+function Remove-LeftoversCore($items) {
+    function Start-Progress([string]$l) { Set-TK -1 (T 'lo.removing') '' }
+    function Update-Progress([double]$pct = -1, [string]$detail = '', [switch]$Force) { if ($TK) { $TK.Pct = $pct; if ($detail) { $TK.Detail = $detail } } }
+    function Stop-Progress { }
+    $r = Remove-Leftovers @($items)
+    Set-TK 100 ((T 'lo.removed') -f $r.Ok) ''
+    return $r
+}
+function Get-LeftoverBackups {
+    $root = Join-Path $DataDir 'backup'
+    $out = @()
+    foreach ($s in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending)) {
+        $mf = Join-Path $s.FullName 'manifest.json'
+        if (-not (Test-Path $mf)) { continue }
+        $m = @(); foreach ($e in (ConvertFrom-Json ([IO.File]::ReadAllText($mf, [Text.Encoding]::UTF8)))) { if ($e.Type) { $m += $e } }
+        $out += [pscustomobject]@{ Dir = $s.FullName; When = $s.CreationTime; Count = $m.Count; Labels = @($m | ForEach-Object { "$($_.Label)" }) }
+    }
+    return $out
+}
+function Restore-LeftoverBackupCore([string]$dir) {
+    $mf = Join-Path $dir 'manifest.json'
+    $ok = 0; $fail = 0
+    foreach ($e in (ConvertFrom-Json ([IO.File]::ReadAllText($mf, [Text.Encoding]::UTF8)))) {
+        if (-not $e.Type) { continue }
+        try {
+            if ($e.Type -eq 'reg') { & reg.exe import $e.File 2>&1 | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'reg' } }
+            elseif ($e.Type -eq 'file') { New-Item -ItemType Directory -Path (Split-Path $e.Extra -Parent) -Force | Out-Null; Move-Item -LiteralPath $e.File -Destination $e.Extra -Force -ErrorAction Stop }
+            elseif ($e.Type -eq 'task') { $tp, $tn = "$($e.Extra)" -split '\|', 2; Register-ScheduledTask -Xml ([IO.File]::ReadAllText($e.File)) -TaskName $tn -TaskPath $tp -Force -ErrorAction Stop | Out-Null }
+            $ok++
+        } catch { $fail++ }
+    }
+    if ($fail -eq 0) { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+    Write-AppLog "Leftover restore: ok=$ok fail=$fail"
+    return @{ Ok = $ok; Fail = $fail }
+}
+
+# ---------- Μεγάλα αρχεία ----------
+function Find-BigFilesCore([string]$root) {
+    Set-TK -1 (T 'bf.scanning') $root
+    $skipDirs = @("$env:WINDIR", "$env:SystemDrive\System Volume Information", "$env:SystemDrive\`$Recycle.Bin") | Where-Object { $_ }
+    $skipFiles = @('pagefile.sys', 'hiberfil.sys', 'swapfile.sys', 'DumpStack.log.tmp')
+    $big = New-Object System.Collections.Generic.List[object]
+    $n = 0; $bytes = 0.0
+    Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $n++; $bytes += $_.Length
+        if ($_.Length -ge 5MB -and $skipFiles -notcontains $_.Name) {
+            $f = $_.FullName; $skip = $false
+            foreach ($d in $skipDirs) { if ($f.StartsWith($d + '\', [StringComparison]::OrdinalIgnoreCase)) { $skip = $true; break } }
+            if (-not $skip) { $big.Add([pscustomobject]@{ Path = $f; Name = $_.Name; Dir = $_.DirectoryName; Size = [double]$_.Length; Date = $_.LastWriteTime }) }
+        }
+        if ($n % 500 -eq 0) { Set-TK -1 $null ((T 'bf.progress') -f $n, (Format-Size $bytes)) }
+    }
+    $top = @($big | Sort-Object Size -Descending | Select-Object -First 40)
+    Set-TK 100 ((T 'bf.done') -f $n, (Format-Size $bytes)) ''
+    return @{ Files = $top; Count = $n; Bytes = $bytes; Root = $root }
+}
+
+# ---------- Υγεία δίσκων (προστίθεται στη σελίδα Ασφάλειας) ----------
+function Get-HealthStatus {
+    $L = [System.Collections.ArrayList]::new()
+    foreach ($d in @(Get-PhysicalDisk -ErrorAction SilentlyContinue | Sort-Object DeviceId)) {
+        $rel = $d | Get-StorageReliabilityCounter -ErrorAction SilentlyContinue
+        $s = 'info'; $k = 'hl.disk.unknown'
+        switch ("$($d.HealthStatus)") { 'Healthy' { $s = 'ok'; $k = 'hl.disk.ok' } 'Warning' { $s = 'warn'; $k = 'hl.disk.warn' } 'Unhealthy' { $s = 'bad'; $k = 'hl.disk.bad' } }
+        $extra = @()
+        if ($rel.Temperature) { $extra += ((T 'hl.temp') -f $rel.Temperature); if ([int]$rel.Temperature -ge 60 -and $s -eq 'ok') { $s = 'warn' } }
+        if ("$($d.MediaType)" -eq 'SSD' -and $null -ne $rel.Wear) { $extra += ((T 'hl.wear') -f $rel.Wear); if ([int]$rel.Wear -ge 80 -and $s -eq 'ok') { $s = 'warn' } }
+        $name = "$($d.FriendlyName) ($($d.MediaType), $(Format-Size $d.Size))"
+        $txt = $name; if ($extra.Count -gt 0) { $txt += ' · ' + ($extra -join ' · ') }
+        [void]$L.Add([pscustomobject]@{ K = $k; S = $s; A = @($txt); G = 'health' })
+    }
+    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+    if ($os) { $up = (Get-Date) - $os.LastBootUpTime; if ($up.Days -ge 7) { [void]$L.Add([pscustomobject]@{ K = 'hl.uptime.long'; S = 'warn'; A = @($up.Days); G = 'health' }) } else { [void]$L.Add([pscustomobject]@{ K = 'hl.uptime'; S = 'ok'; A = @($up.Days, $up.Hours); G = 'health' }) } }
+    if (Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue) { [void]$L.Add([pscustomobject]@{ K = 'hl.battery'; S = 'info'; A = @(); G = 'health' }) }
+    return , $L
+}
+function Get-SecurityAndHealth {
+    # Οι δύο συναρτήσεις επιστρέφουν λίστα ως ένα αντικείμενο: τη διατρέχουμε απευθείας (χωρίς @()),
+    # αλλιώς η λίστα θα έμπαινε ολόκληρη σαν ένα στοιχείο.
+    $all = [System.Collections.ArrayList]::new()
+    $sec = Get-SecurityStatus
+    foreach ($x in $sec) { $x | Add-Member -NotePropertyName G -NotePropertyValue 'sec' -Force; [void]$all.Add($x) }
+    $hl = Get-HealthStatus
+    foreach ($x in $hl) { [void]$all.Add($x) }
+    return , $all
+}
+function New-BatteryReport {
+    $rep = Join-Path $AppRoot 'reports\battery-report.html'
+    New-Item -ItemType Directory -Path (Split-Path $rep) -Force | Out-Null
+    powercfg /batteryreport /output "$rep" | Out-Null
+    return $rep
 }

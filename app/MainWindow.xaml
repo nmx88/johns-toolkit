@@ -256,9 +256,10 @@
           <RadioButton x:Name="NavClean" Style="{StaticResource NavButton}" Tag="&#xE74D;"/>
           <RadioButton x:Name="NavTweaks" Style="{StaticResource NavButton}" Tag="&#xE9E9;"/>
           <RadioButton x:Name="NavApps" Style="{StaticResource NavButton}" Tag="&#xE71D;"/>
+          <RadioButton x:Name="NavNet" Style="{StaticResource NavButton}" Tag="&#xE774;"/>
           <RadioButton x:Name="NavSecurity" Style="{StaticResource NavButton}" Tag="&#xEA18;"/>
           <RadioButton x:Name="NavRepair" Style="{StaticResource NavButton}" Tag="&#xE90F;"/>
-          <RadioButton x:Name="NavTools" Style="{StaticResource NavButton}" Tag="&#xE8F1;"/>
+          <RadioButton x:Name="NavTools" Style="{StaticResource NavButton}" Tag="&#xE8F1;" Visibility="Collapsed"/>
           <RadioButton x:Name="NavSettings" Style="{StaticResource NavButton}" Tag="&#xE713;"/>
         </StackPanel>
       </DockPanel>
@@ -274,6 +275,9 @@
 
       <Grid Grid.Row="0" Margin="36,26,36,12">
         <StackPanel>
+          <Border x:Name="NeonSign" HorizontalAlignment="Left" CornerRadius="20" BorderThickness="3" Padding="26,2,26,10" Margin="0,0,0,10" Visibility="Collapsed">
+            <StackPanel x:Name="NeonLetters" Orientation="Horizontal"/>
+          </Border>
           <TextBlock x:Name="PageTitle" FontSize="28" FontWeight="SemiBold"/>
           <TextBlock x:Name="PageSub" FontSize="14" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
         </StackPanel>
@@ -354,6 +358,10 @@
         <!-- Καθαρισμός -->
         <ScrollViewer x:Name="PageClean" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
           <StackPanel>
+          <WrapPanel x:Name="CleanTabs" Margin="0,0,0,10"/>
+          <StackPanel x:Name="LeftBody" Visibility="Collapsed"/>
+          <StackPanel x:Name="BigBody" Visibility="Collapsed"/>
+          <StackPanel x:Name="CleanMain">
             <Border Style="{StaticResource Card}">
               <StackPanel>
                 <Grid>
@@ -374,6 +382,7 @@
               <TextBlock x:Name="TxtCleanSum" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="{DynamicResource GoodBrush}" Margin="8,0,0,0"/>
             </WrapPanel>
             <StackPanel x:Name="CleanList"/>
+          </StackPanel>
           </StackPanel>
         </ScrollViewer>
 
@@ -397,6 +406,11 @@
             <TextBlock x:Name="TxtAppsMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
             <StackPanel x:Name="AppsBody"/>
           </StackPanel>
+        </ScrollViewer>
+
+        <!-- Δίκτυο & VPN -->
+        <ScrollViewer x:Name="PageNet" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel x:Name="NetBody"/>
         </ScrollViewer>
 
         <!-- Ασφάλεια -->
@@ -437,6 +451,16 @@
                   <TextBlock x:Name="SetAutoD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
                 </StackPanel>
                 <CheckBox x:Name="ChkAuto" Grid.Column="1" Style="{StaticResource Switch}"/>
+              </Grid>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,16,0">
+                  <TextBlock x:Name="SetFlickerT" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="SetFlickerD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
+                </StackPanel>
+                <CheckBox x:Name="ChkFlicker" Grid.Column="1" Style="{StaticResource Switch}"/>
               </Grid>
             </Border>
             <WrapPanel Margin="0,4,0,12">

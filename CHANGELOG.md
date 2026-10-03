@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.3.0
+- **Neon "Welcome" sign** on Home: glowing letters in the theme colours, one half-broken letter that sputters and an occasional flicker, like a real bar sign. Can be turned off in Settings (and stays still when Windows animations are off).
+- New **Network & VPN** page: every program connected to the internet, VPN/leak check (any VPN, not only Mullvad), known malicious IPs, details per program (open folder, Defender scan, VirusTotal search, trust, end program), listening ports, live monitoring with a beep on red, HTML report.
+- **Cleanup** now has tabs: Temporary files · **Leftovers** (with backup and restore) · **Large files** (send to Recycle Bin).
+- **Health** on the Security page: disk health, temperature and SSD wear, uptime, battery report.
+- Everything now lives in the window; the classic console mode is no longer needed (still available from Settings).
+- All files use Windows line endings (no more Git warnings).
+
 ## v2.2.0
 - New **Apps** page: startup programs (on/off switches), program updates with winget (safe ones pre-ticked, risky ones explained, freeze/unfreeze) and removal of pre-installed apps.
 - New **Security** page: antivirus, firewall, UAC, Remote Desktop, SMBv1, Secure Boot, TPM, Windows Update age, memory integrity, file extensions, VPN and remote-access programs, with one-click fixes and a quick Defender scan.

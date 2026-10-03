@@ -7,8 +7,13 @@ $App = @{
     Settings = Get-AppSettings; Busy = $false; Task = $null; Marq = 0; Page = 'Home'
     CleanSel = @{}; SizeLabels = @{}; Engine = $WorkerEngine; NeedsRestart = $false; LastDash = [datetime]::MinValue
     Os = (Get-OSInfo); AppsTab = 'startup'; Updates = $null; Pins = @(); UpdSel = @{}; NoWinget = $false; Bloat = $null; BloatSel = @{}; Security = $null; StartupEntries = @()
+    CleanTab = 'temp'; Leftovers = $null; LeftSel = @{}; LeftMsg = ''; BigLoc = 'user'; Big = $null
+    Net = $null; NetOpen = -1; Threat = $null; MonOn = $false; MonList = $null; MonLast = [datetime]::MinValue
+    Rand = [Random]::new(); SignLetters = @(); SignBroken = -1; SignOff = @{}; SignFrameOff = 0; Pal = $null
 }
 Set-AppLanguage $App.Settings.lang
+if ($null -eq $App.Settings.flicker) { $App.Settings.flicker = $true }
+if ($null -eq $App.Settings.netGeo) { $App.Settings.netGeo = $false }
 
 # ---------- Κείμενο παραθύρου ----------
 $xamlText = [IO.File]::ReadAllText((Join-Path $AppRoot 'app\MainWindow.xaml'), [Text.Encoding]::UTF8)
@@ -53,6 +58,8 @@ function Set-Theme([string]$name) {
     }
     Set-WinResource 'AccentColor' ([Windows.Media.Color][Windows.Media.ColorConverter]::ConvertFromString($t.Accent))
     Set-WinResource 'Accent2Color' ([Windows.Media.Color][Windows.Media.ColorConverter]::ConvertFromString($t.Accent2))
+    $App.Pal = $t
+    if ($UI.NeonLetters) { Build-NeonSign }
 }
 
 # ---------- Βοηθητικά για δημιουργία στοιχείων ----------
@@ -145,14 +152,17 @@ function Update-TaskUI {
 }
 
 # ---------- Πλοήγηση ----------
-$Pages = [ordered]@{ Home = 'PageHome'; Clean = 'PageClean'; Tweaks = 'PageTweaks'; Apps = 'PageApps'; Security = 'PageSecurity'; Repair = 'PageRepair'; Tools = 'PageTools'; Settings = 'PageSettings' }
+$Pages = [ordered]@{ Home = 'PageHome'; Clean = 'PageClean'; Tweaks = 'PageTweaks'; Apps = 'PageApps'; Net = 'PageNet'; Security = 'PageSecurity'; Repair = 'PageRepair'; Tools = 'PageTools'; Settings = 'PageSettings' }
 function Show-Page([string]$name) {
     $App.Page = $name
     foreach ($k in $Pages.Keys) { if ($k -eq $name) { $UI[$Pages[$k]].Visibility = 'Visible' } else { $UI[$Pages[$k]].Visibility = 'Collapsed' } }
     $UI.PageTitle.Text = T "page.$($name.ToLower()).t"
+    if ($name -eq 'Home') { $UI.PageTitle.Visibility = 'Collapsed'; $UI.NeonSign.Visibility = 'Visible' } else { $UI.PageTitle.Visibility = 'Visible'; $UI.NeonSign.Visibility = 'Collapsed' }
+    Update-SignTimer
     $UI.PageSub.Text = T "page.$($name.ToLower()).s"
     if ($name -eq 'Home') { Update-Dashboard -Force }
     if ($name -eq 'Security' -and $null -eq $App.Security -and -not $App.Busy) { Start-SecurityCheck }
+    if ($name -eq 'Clean' -and $App.CleanTab -eq 'left') { Build-LeftoverList }
     if ($name -eq 'Apps' -and $App.AppsTab -eq 'startup') { Build-AppsBody }
 }
 
@@ -559,7 +569,10 @@ function Build-SecurityPage {
     [void]$wp.Children.Add($b2)
     $b3 = New-Button (T 'sec.open') 'Secondary'; $b3.Margin = '0,0,10,8'; $b3.Add_Click({ Start-Process 'windowsdefender:' }); [void]$wp.Children.Add($b3)
     [void]$sp.Children.Add($wp); $card.Child = $sp; [void]$p.Children.Add($card)
+    $grp = $null
     foreach ($it in $items) {
+        $gg = "$($it.G)"; if (-not $gg) { $gg = 'sec' }
+        if ($gg -ne $grp) { $grp = $gg; [void]$p.Children.Add((New-GroupHeader (T "sec.g.$gg"))) }
         $c = New-Card; $c.Padding = '18,12'; $c.Margin = '0,0,0,8'
         $g = [Windows.Controls.Grid]::new()
         foreach ($w in @('Auto', '*', 'Auto')) { $cd = [Windows.Controls.ColumnDefinition]::new(); $cd.Width = $w; [void]$g.ColumnDefinitions.Add($cd) }
@@ -575,6 +588,8 @@ function Build-SecurityPage {
             'sec.hvci.off' { $act = New-Button (T 'hvci.btn') 'Secondary'; $act.Add_Click({ Start-Process 'windowsdefender://coreisolation' }) }
             'sec.fw.off' { $act = New-Button (T 'sec.open') 'Secondary'; $act.Add_Click({ Start-Process 'windowsdefender://network' }) }
             'sec.av.none' { $act = New-Button (T 'sec.open') 'Secondary'; $act.Add_Click({ Start-Process 'windowsdefender:' }) }
+            'hl.battery' { $act = New-Button (T 'hl.battery.btn') 'Secondary'; $act.Add_Click({ $f = New-BatteryReport; if (Test-Path $f) { Start-Process $f } }) }
+            'hl.uptime.long' { $act = New-Button (T 'hl.restart.btn') 'Secondary'; $act.Add_Click({ if (Confirm-Box (T 'hl.restart.confirm')) { Restart-Computer -Force } }) }
         }
         if ($act) { $act.Margin = '12,0,0,0'; $act.VerticalAlignment = 'Center'; [Windows.Controls.Grid]::SetColumn($act, 2); [void]$g.Children.Add($act) }
         $c.Child = $g; [void]$p.Children.Add($c)
@@ -582,7 +597,7 @@ function Build-SecurityPage {
 }
 function Start-SecurityCheck {
     $App.Security = $null; Build-SecurityPage
-    Start-Task 'sec.loading' 'Get-SecurityStatus' @{} { param($TK); $App.Security = @($TK.Result); Build-SecurityPage }
+    Start-Task 'sec.loading' 'Get-SecurityAndHealth' @{} { param($TK); $App.Security = @($TK.Result); Build-SecurityPage }
 }
 
 # ---------- Σχέδιο ενέργειας (στην κορυφή των Ρυθμίσεων Windows) ----------
@@ -604,6 +619,378 @@ function Add-PowerCard {
     $a = New-Text ('↳ ' + (T 'pw.note')) 12 'Accent2Brush'; $a.Margin = '0,2,0,0'; [void]$sp.Children.Add($a)
     $card.Child = $sp
     [void]$UI.TweakList.Children.Insert(0, $card)
+}
+
+# ======================================================================
+#  ΠΙΝΑΚΙΔΑ NEON "WELCOME" (μισοχαλασμένη, σαν ταμπέλα μπαρ)
+# ======================================================================
+function ConvertTo-WpfColor([string]$hex) { return [Windows.Media.Color][Windows.Media.ColorConverter]::ConvertFromString($hex) }
+function Get-Lighter([Windows.Media.Color]$c, [double]$k) {
+    return [Windows.Media.Color]::FromRgb([byte]($c.R + (255 - $c.R) * $k), [byte]($c.G + (255 - $c.G) * $k), [byte]($c.B + (255 - $c.B) * $k))
+}
+function New-Glow([Windows.Media.Color]$c, [double]$blur) {
+    $e = [Windows.Media.Effects.DropShadowEffect]::new(); $e.Color = $c; $e.BlurRadius = $blur; $e.ShadowDepth = 0; $e.Opacity = 1
+    return $e
+}
+function Build-NeonSign {
+    $p = $UI.NeonLetters; $p.Children.Clear()
+    $pal = $App.Pal; if (-not $pal) { return }
+    $acc = ConvertTo-WpfColor $pal.Accent; $acc2 = ConvertTo-WpfColor $pal.Accent2
+    $core = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc 0.55)); $core.Freeze()
+    $text = T 'home.sign'
+    $App.SignLetters = @()
+    foreach ($ch in $text.ToCharArray()) {
+        $tb = [Windows.Controls.TextBlock]::new()
+        $tb.Text = [string]$ch; $tb.FontSize = 46; $tb.FontWeight = 'Bold'
+        $tb.FontFamily = [Windows.Media.FontFamily]::new('Segoe Script, Segoe UI')
+        $tb.Foreground = $core
+        $tb.Effect = New-Glow $acc 26
+        [void]$p.Children.Add($tb)
+        $App.SignLetters += $tb
+    }
+    $UI.NeonSign.BorderBrush = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc2 0.35))
+    $UI.NeonSign.Effect = New-Glow $acc2 22
+    # ένα γράμμα (όχι το πρώτο, όχι κενό) είναι "χαλασμένο"
+    $idx = @(); for ($i = 1; $i -lt $App.SignLetters.Count; $i++) { if ($App.SignLetters[$i].Text.Trim()) { $idx += $i } }
+    $App.SignBroken = -1; if ($idx.Count -gt 0) { $App.SignBroken = $idx[$App.Rand.Next($idx.Count)] }
+    $App.SignOff = @{}; $App.SignFrameOff = 0
+    if ($App.SignBroken -ge 0) { $App.SignLetters[$App.SignBroken].Opacity = 0.28 }
+}
+function Test-SignMotion { return ([bool]$App.Settings.flicker -and [System.Windows.SystemParameters]::ClientAreaAnimation) }
+function Step-NeonSign {
+    $L = @($App.SignLetters); if ($L.Count -eq 0) { return }
+    $r = $App.Rand
+    for ($i = 0; $i -lt $L.Count; $i++) {
+        if ($i -eq $App.SignBroken) {
+            # το χαλασμένο γράμμα: συνήθως σβηστό, κάνει "σπινθήρες"
+            if ($App.SignOff[$i] -gt 0) { $App.SignOff[$i]--; $L[$i].Opacity = 1 }
+            elseif ($r.NextDouble() -lt 0.07) { $App.SignOff[$i] = $r.Next(1, 4); $L[$i].Opacity = 1 }
+            else { $L[$i].Opacity = 0.18 + $r.NextDouble() * 0.15 }
+            continue
+        }
+        if ($App.SignOff[$i] -gt 0) { $App.SignOff[$i]--; $L[$i].Opacity = 0.12; continue }
+        $L[$i].Opacity = 1
+        if ($r.NextDouble() -lt 0.004) { $App.SignOff[$i] = $r.Next(1, 3) }
+    }
+    if ($App.SignFrameOff -gt 0) { $App.SignFrameOff--; $UI.NeonSign.Opacity = 0.35 }
+    else { $UI.NeonSign.Opacity = 1; if ($r.NextDouble() -lt 0.003) { $App.SignFrameOff = $r.Next(1, 3) } }
+}
+function Update-SignTimer {
+    if (-not $SignTimer) { return }
+    if ($App.Page -eq 'Home' -and (Test-SignMotion)) { if (-not $SignTimer.IsEnabled) { $SignTimer.Start() } }
+    else {
+        if ($SignTimer.IsEnabled) { $SignTimer.Stop() }
+        foreach ($l in @($App.SignLetters)) { $l.Opacity = 1 }
+        if ($App.SignBroken -ge 0 -and @($App.SignLetters).Count -gt $App.SignBroken) { $App.SignLetters[$App.SignBroken].Opacity = 0.28 }
+        $UI.NeonSign.Opacity = 1
+    }
+}
+
+# ======================================================================
+#  ΚΑΘΑΡΙΣΜΟΣ: ΚΑΡΤΕΛΕΣ (Προσωρινά | Υπολείμματα | Μεγάλα αρχεία)
+# ======================================================================
+function Build-CleanTabs {
+    $UI.CleanTabs.Children.Clear()
+    foreach ($tab in @('temp', 'left', 'big')) {
+        $rb = New-Pill (T "clean.tab.$tab") $tab 'cleantab' ($tab -eq $App.CleanTab)
+        $rb.Add_Checked({ $App.CleanTab = [string]$this.Tag; Show-CleanTab })
+        [void]$UI.CleanTabs.Children.Add($rb)
+    }
+    Show-CleanTab
+}
+function Show-CleanTab {
+    $UI.CleanMain.Visibility = 'Collapsed'; $UI.LeftBody.Visibility = 'Collapsed'; $UI.BigBody.Visibility = 'Collapsed'
+    switch ($App.CleanTab) {
+        'temp' { $UI.CleanMain.Visibility = 'Visible' }
+        'left' { $UI.LeftBody.Visibility = 'Visible'; Build-LeftoverList }
+        'big' { $UI.BigBody.Visibility = 'Visible'; Build-BigList }
+    }
+}
+
+# ---------- Υπολείμματα ----------
+function Build-LeftoverList {
+    $p = $UI.LeftBody; $p.Children.Clear()
+    $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
+    [void]$sp.Children.Add((New-Text (T 'lo.intro') 13 'SubBrush'))
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,0'
+    $b1 = New-Button (T 'lo.scan') 'Secondary'; $b1.Margin = '0,0,10,8'; $b1.Add_Click({ Start-LeftoverScan }); [void]$wp.Children.Add($b1)
+    if (@($App.Leftovers).Count -gt 0) {
+        $n = @($App.Leftovers | Where-Object { $App.LeftSel[$App.Leftovers.IndexOf($_)] }).Count
+        $b2 = New-Button ((T 'lo.remove') -f $n) 'Primary'; $b2.Margin = '0,0,10,8'; $b2.Add_Click({ Start-LeftoverRemove }); [void]$wp.Children.Add($b2)
+    }
+    if ($App.LeftMsg) { $m = New-Text $App.LeftMsg 13 'GoodBrush' 'SemiBold'; $m.Margin = '0,4,0,0'; [void]$sp.Children.Add($m) }
+    [void]$sp.Children.Add($wp); $card.Child = $sp; [void]$p.Children.Add($card)
+    if ($null -eq $App.Leftovers) { [void]$p.Children.Add((New-Text (T 'lo.notscanned') 14 'SubBrush')) }
+    elseif (@($App.Leftovers).Count -eq 0) { [void]$p.Children.Add((New-Text (T 'lo.none') 15 'GoodBrush' 'SemiBold')) }
+    else {
+        $grp = $null
+        for ($i = 0; $i -lt $App.Leftovers.Count; $i++) {
+            $x = $App.Leftovers[$i]
+            if ($x.Cat -ne $grp) { $grp = $x.Cat; [void]$p.Children.Add((New-GroupHeader (T "lo.cat.$grp"))) }
+            $c = New-Card; $c.Padding = '18,12'; $c.Margin = '0,0,0,8'
+            $g = [Windows.Controls.Grid]::new()
+            foreach ($w in @('Auto', '*')) { $cd = [Windows.Controls.ColumnDefinition]::new(); $cd.Width = $w; [void]$g.ColumnDefinitions.Add($cd) }
+            $chk = [Windows.Controls.CheckBox]::new(); $chk.Style = $Win.FindResource('Check'); $chk.Tag = $i; $chk.Margin = '0,0,16,0'
+            $chk.IsChecked = [bool]$App.LeftSel[$i]
+            $chk.Add_Click({ $App.LeftSel[[int]$this.Tag] = [bool]$this.IsChecked; Build-LeftoverList })
+            $s = [Windows.Controls.StackPanel]::new()
+            [void]$s.Children.Add((New-Text "$($x.Label)" 15 'TextBrush' 'SemiBold'))
+            $d = New-Text ((T "lo.why.$($x.Cat)")) 12 'SubBrush'; $d.Margin = '0,2,0,0'; [void]$s.Children.Add($d)
+            $mm = New-Text ((T 'lo.missing') -f $x.Missing) 12 'Accent2Brush'; $mm.Margin = '0,4,0,0'; [void]$s.Children.Add($mm)
+            [Windows.Controls.Grid]::SetColumn($s, 1)
+            [void]$g.Children.Add($chk); [void]$g.Children.Add($s); $c.Child = $g; [void]$p.Children.Add($c)
+        }
+    }
+    # αντίγραφα ασφαλείας
+    $bk = @(Get-LeftoverBackups)
+    if ($bk.Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'lo.backups')))
+        foreach ($b in $bk) {
+            $c = New-Card; $c.Padding = '18,12'; $c.Margin = '0,0,0,8'
+            $s = [Windows.Controls.StackPanel]::new()
+            [void]$s.Children.Add((New-Text ((T 'lo.backup.t') -f $b.When.ToString('g', (Get-LangCulture)), $b.Count) 14 'TextBrush' 'SemiBold'))
+            $d = New-Text ((@($b.Labels) | Select-Object -First 5) -join ' · ') 12 'SubBrush'; $d.Margin = '0,2,0,0'; [void]$s.Children.Add($d)
+            $rb = New-Button (T 'lo.restore') 'Secondary'; $rb.Tag = $b.Dir
+            $rb.Add_Click({
+                if (-not (Confirm-Box (T 'lo.restore.confirm'))) { return }
+                Start-Task 'lo.restoring' 'Restore-LeftoverBackupCore $TK.Args.Dir' @{ Dir = [string]$this.Tag } { param($TK); $App.LeftMsg = (T 'lo.restored') -f $TK.Result.Ok; Build-LeftoverList }
+            })
+            $c.Child = (New-Row $s $rb); [void]$p.Children.Add($c)
+        }
+    }
+}
+function Start-LeftoverScan {
+    $App.LeftMsg = ''
+    Start-Task 'lo.scanning' 'Find-LeftoversCore' @{} {
+        param($TK)
+        $order = @{ startup = 0; shortcut = 1; uninstall = 2; task = 3 }
+        $list = [System.Collections.ArrayList]::new()
+        foreach ($x in (@($TK.Result) | Sort-Object @{ e = { $order["$($_.Cat)"] } }, Label)) { [void]$list.Add($x) }
+        $App.Leftovers = $list; $App.LeftSel = @{}; for ($i = 0; $i -lt $list.Count; $i++) { $App.LeftSel[$i] = $true }
+        Build-LeftoverList
+    }
+}
+function Start-LeftoverRemove {
+    $sel = @(); for ($i = 0; $i -lt $App.Leftovers.Count; $i++) { if ($App.LeftSel[$i]) { $sel += $App.Leftovers[$i] } }
+    if ($sel.Count -eq 0) { Show-Info (T 'lo.none.sel'); return }
+    if (-not (Confirm-Box ((T 'lo.confirm') -f $sel.Count))) { return }
+    Start-Task 'lo.removing' 'Remove-LeftoversCore $TK.Args.Items' @{ Items = $sel } {
+        param($TK)
+        $r = $TK.Result; if ($r) { $App.LeftMsg = (T 'lo.result') -f $r.Ok, $r.Fail }
+        $App.Leftovers = $null; Build-LeftoverList
+    }
+}
+
+# ---------- Μεγάλα αρχεία ----------
+function Build-BigList {
+    $p = $UI.BigBody; $p.Children.Clear()
+    $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
+    [void]$sp.Children.Add((New-Text (T 'bf.intro') 13 'SubBrush'))
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,4'
+    $locs = [ordered]@{ user = $env:USERPROFILE; downloads = (Join-Path $env:USERPROFILE 'Downloads'); c = "$env:SystemDrive\"; pick = '' }
+    foreach ($k in $locs.Keys) {
+        $rb = New-Pill (T "bf.loc.$k") $k 'bigloc' ($k -eq $App.BigLoc)
+        $rb.Add_Checked({ $App.BigLoc = [string]$this.Tag })
+        [void]$wp.Children.Add($rb)
+    }
+    [void]$sp.Children.Add($wp)
+    $b = New-Button (T 'bf.scan') 'Primary'; $b.HorizontalAlignment = 'Left'
+    $b.Add_Click({
+        $root = switch ($App.BigLoc) { 'user' { $env:USERPROFILE } 'downloads' { Join-Path $env:USERPROFILE 'Downloads' } 'c' { "$env:SystemDrive\" } default { Select-Folder } }
+        if (-not $root) { return }
+        Start-Task 'bf.scanning' 'Find-BigFilesCore $TK.Args.Root' @{ Root = $root } { param($TK); $App.Big = $TK.Result; Build-BigList }
+    })
+    [void]$sp.Children.Add($b)
+    $card.Child = $sp; [void]$p.Children.Add($card)
+    if (-not $App.Big) { return }
+    [void]$p.Children.Add((New-GroupHeader ((T 'bf.result') -f @($App.Big.Files).Count, $App.Big.Root)))
+    foreach ($f in @($App.Big.Files)) {
+        $c = New-Card; $c.Padding = '18,12'; $c.Margin = '0,0,0,8'
+        $s = [Windows.Controls.StackPanel]::new()
+        [void]$s.Children.Add((New-Text ("$(Format-Size $f.Size)   $($f.Name)") 15 'TextBrush' 'SemiBold'))
+        $d = New-Text ("$($f.Dir) · $($f.Date.ToString('d', (Get-LangCulture)))") 12 'SubBrush'; $d.Margin = '0,2,0,0'; [void]$s.Children.Add($d)
+        $btns = [Windows.Controls.StackPanel]::new(); $btns.Orientation = 'Horizontal'
+        $o = New-Button (T 'bf.open') 'Secondary'; $o.Tag = $f.Path; $o.Add_Click({ Start-Process explorer.exe -ArgumentList "/select,`"$([string]$this.Tag)`"" }); [void]$btns.Children.Add($o)
+        $r = New-Button (T 'bf.recycle') 'Secondary'; $r.Tag = $f.Path; $r.Margin = '0'
+        $r.Add_Click({
+            $path = [string]$this.Tag
+            if (-not (Confirm-Box ((T 'bf.recycle.confirm') -f (Split-Path $path -Leaf)))) { return }
+            try {
+                Add-Type -AssemblyName Microsoft.VisualBasic
+                [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($path, 'OnlyErrorDialogs', 'SendToRecycleBin')
+                Write-AppLog "Recycle: $path"
+                $App.Big.Files = @($App.Big.Files | Where-Object { $_.Path -ne $path }); Build-BigList
+            } catch { Show-Info ((T 'bf.recycle.fail') -f $_.Exception.Message) }
+        })
+        [void]$btns.Children.Add($r)
+        $c.Child = (New-Row $s $btns); [void]$p.Children.Add($c)
+    }
+}
+
+# ======================================================================
+#  ΔΙΚΤΥΟ & VPN
+# ======================================================================
+function Build-NetPage {
+    $p = $UI.NetBody; $p.Children.Clear()
+    $d = $App.Net
+    # κατάσταση
+    $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
+    if ($d -and $d.Status) {
+        if (@($d.VpnNames).Count -gt 0) { $t = New-Text ('● ' + ((T 'net.vpn.on') -f (@($d.VpnNames) -join ' + '), $d.Status.Ip, $d.Status.Country)) 17 'GoodBrush' 'SemiBold' }
+        else { $t = New-Text ('● ' + ((T 'net.vpn.off') -f $d.Status.Ip, $d.Status.Country)) 17 'BadBrush' 'SemiBold' }
+        [void]$sp.Children.Add($t)
+        $s2 = New-Text ((T 'net.summary') -f $d.Total, @($d.Report).Count, $d.ThreatCount) 12 'SubBrush'; $s2.Margin = '0,4,0,0'; [void]$sp.Children.Add($s2)
+    } elseif ($d) { [void]$sp.Children.Add((New-Text (T 'net.nostatus') 15 'WarnBrush' 'SemiBold')) }
+    else { [void]$sp.Children.Add((New-Text (T 'net.intro') 13 'SubBrush')) }
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,14,0,0'
+    $b1 = New-Button (T 'net.analyze') 'Primary'; $b1.Margin = '0,0,10,8'; $b1.Add_Click({ Start-NetAnalysis }); [void]$wp.Children.Add($b1)
+    if ($d) { $b2 = New-Button (T 'net.export') 'Secondary'; $b2.Margin = '0,0,10,8'; $b2.Add_Click({ $f = Export-NetReportCore $App.Net; Start-Process $f }); [void]$wp.Children.Add($b2) }
+    [void]$sp.Children.Add($wp)
+    $geo = [Windows.Controls.CheckBox]::new(); $geo.Style = $Win.FindResource('Check'); $geo.IsChecked = [bool]$App.Settings.netGeo
+    $geoT = New-Text (T 'net.geo.opt') 12 'SubBrush'; $geoT.Margin = '10,0,0,0'; $geoT.VerticalAlignment = 'Center'
+    $geoRow = [Windows.Controls.StackPanel]::new(); $geoRow.Orientation = 'Horizontal'; $geoRow.Margin = '0,6,0,0'
+    $geo.Add_Click({ $App.Settings.netGeo = [bool]$this.IsChecked; Save-AppSettings $App.Settings })
+    [void]$geoRow.Children.Add($geo); [void]$geoRow.Children.Add($geoT); [void]$sp.Children.Add($geoRow)
+    $card.Child = $sp; [void]$p.Children.Add($card)
+
+    # ζωντανή παρακολούθηση
+    $mc = New-Card; $ms = [Windows.Controls.StackPanel]::new()
+    $ml = [Windows.Controls.StackPanel]::new()
+    [void]$ml.Children.Add((New-Text (T 'net.mon.t') 16 'TextBrush' 'SemiBold'))
+    $md = New-Text (T 'net.mon.d') 12 'SubBrush'; $md.Margin = '0,2,0,0'; [void]$ml.Children.Add($md)
+    $sw = [Windows.Controls.CheckBox]::new(); $sw.Style = $Win.FindResource('Switch'); $sw.IsChecked = [bool]$App.MonOn
+    $sw.Add_Click({ if ([bool]$this.IsChecked) { Start-LiveMonitor } else { $App.MonOn = $false } })
+    [void]$ms.Children.Add((New-Row $ml $sw))
+    if (-not $App.MonList) {
+        $App.MonList = [Windows.Controls.ListBox]::new(); $App.MonList.Height = 170; $App.MonList.Margin = '0,12,0,0'
+        $App.MonList.FontFamily = [Windows.Media.FontFamily]::new('Cascadia Mono, Consolas'); $App.MonList.FontSize = 12
+        $App.MonList.SetResourceReference([Windows.Controls.Control]::BackgroundProperty, 'BgBrush')
+        $App.MonList.SetResourceReference([Windows.Controls.Control]::BorderBrushProperty, 'LineBrush')
+    }
+    $parent = $App.MonList.Parent; if ($parent) { $parent.Children.Remove($App.MonList) }
+    if ($App.MonOn -or $App.MonList.Items.Count -gt 0) { [void]$ms.Children.Add($App.MonList) }
+    $mc.Child = $ms; [void]$p.Children.Add($mc)
+
+    if (-not $d) { return }
+    [void]$p.Children.Add((New-GroupHeader (T 'net.programs')))
+    foreach ($r in $d.Report) {
+        $c = New-Card; $c.Padding = '18,12'; $c.Margin = '0,0,0,8'
+        $s = [Windows.Controls.StackPanel]::new()
+        $lvBrush = @('GoodBrush', 'WarnBrush', 'BadBrush')[$r.Level]
+        $head = [Windows.Controls.WrapPanel]::new()
+        [void]$head.Children.Add((New-Badge (T ('net.lv.' + $r.Level)) $lvBrush))
+        $nm = New-Text ("$($r.Name)   ") 15 'TextBrush' 'SemiBold'; $nm.Margin = '6,0,0,0'; [void]$head.Children.Add($nm)
+        [void]$head.Children.Add((New-Text ((T 'net.conns') -f $r.Count) 13 'SubBrush'))
+        [void]$s.Children.Add($head)
+        $sig = T $r.SigKey; if ($r.Publisher) { $sig += ": $($r.Publisher)" }; if ($r.Trusted) { $sig += '  · ' + (T 'net.trusted') }
+        $sg = New-Text $sig 12 'SubBrush'; $sg.Margin = '0,4,0,0'; [void]$s.Children.Add($sg)
+        if ($r.Dest) { $ds = New-Text ((T 'net.dest') -f $r.Dest) 12 'SubBrush'; [void]$s.Children.Add($ds) }
+        foreach ($f in @($r.Flags)) { $ft = T $f.K; if (@($f.A).Count) { $ft = $ft -f @($f.A) }; $fl = New-Text ('! ' + $ft) 12 $lvBrush; $fl.Margin = '0,3,0,0'; [void]$s.Children.Add($fl) }
+        $btn = New-Button (T 'net.details') 'Secondary'; $btn.Tag = $r.PID
+        $btn.Add_Click({ if ($App.NetOpen -eq [int]$this.Tag) { $App.NetOpen = -1 } else { $App.NetOpen = [int]$this.Tag }; Build-NetPage })
+        $c.Child = (New-Row $s $btn)
+        if ($App.NetOpen -eq $r.PID) {
+            $outer = [Windows.Controls.StackPanel]::new(); [void]$outer.Children.Add($c.Child)
+            [void]$outer.Children.Add((New-NetDetails $r)); $c.Child = $outer
+        }
+        [void]$p.Children.Add($c)
+    }
+    if (@($d.Listen).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'net.listen')))
+        $c = New-Card; $s = [Windows.Controls.StackPanel]::new()
+        foreach ($l in $d.Listen) { [void]$s.Children.Add((New-Text ("$($l.Name): $($l.Ports)") 13 'TextBrush')) }
+        $n = New-Text (T 'net.listen.d') 12 'SubBrush'; $n.Margin = '0,8,0,0'; [void]$s.Children.Add($n)
+        $c.Child = $s; [void]$p.Children.Add($c)
+    }
+}
+function New-NetDetails($r) {
+    $box = [Windows.Controls.StackPanel]::new(); $box.Margin = '0,14,0,0'
+    [void]$box.Children.Add((New-Text ((T 'net.path') -f $r.Path) 12 'SubBrush'))
+    foreach ($c in @($r.Conns)) {
+        $via = ''; $br = 'TextBrush'
+        if ($c.Via -eq 'vpn') { $via = '[VPN]' } elseif ($c.Via -eq 'out') { $via = '[' + (T 'net.outside') + ']'; $br = 'WarnBrush' }
+        if ($c.Bad) { $br = 'BadBrush' }
+        $t = New-Text ('{0}:{1}  {2}  {3}' -f $c.Ip, $c.Port, $via, $c.Org) 12 $br
+        $t.FontFamily = [Windows.Media.FontFamily]::new('Cascadia Mono, Consolas'); [void]$box.Children.Add($t)
+    }
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,0'
+    $mk = { param($key, $style) $b = New-Button (T $key) $style; $b.Margin = '0,0,10,8'; $b.Tag = $r; return $b }
+    $b1 = & $mk 'net.a.folder' 'Secondary'; $b1.Add_Click({ if ($this.Tag.Path) { Start-Process explorer.exe -ArgumentList "/select,`"$($this.Tag.Path)`"" } }); [void]$wp.Children.Add($b1)
+    $b2 = & $mk 'net.a.scan' 'Primary'
+    $b2.Add_Click({
+        $x = $this.Tag; if (-not $x.Path) { return }
+        Start-Task 'net.scanning' 'Invoke-FileScanCore $TK.Args.Path' @{ Path = $x.Path } {
+            param($TK)
+            if ($TK.Result -eq 0) { Show-Info ((T 'net.scan.clean') -f (Split-Path $TK.Args.Path -Leaf)) }
+            elseif ($TK.Result -eq 2) { Show-Info ((T 'net.scan.found') -f (Split-Path $TK.Args.Path -Leaf)) }
+            else { Show-Info (Get-CodeText ([int]$TK.Result)) }
+        }
+    }); [void]$wp.Children.Add($b2)
+    $b3 = & $mk 'net.a.vt' 'Secondary'; $b3.Add_Click({ $x = $this.Tag; if ($x.Path) { $h = (Get-FileHash -LiteralPath $x.Path -Algorithm SHA256).Hash; Start-Process "https://www.virustotal.com/gui/file/$h" } }); [void]$wp.Children.Add($b3)
+    $tk = 'net.a.trust'; if ($r.Trusted) { $tk = 'net.a.untrust' }
+    $b4 = & $mk $tk 'Secondary'
+    $b4.Add_Click({
+        $x = $this.Tag; if (-not $x.Path) { return }
+        $key = "$($x.Path)".ToLower(); $list = @(Get-TrustedList)
+        if ($list -contains $key) { $list = @($list | Where-Object { $_ -ne $key }); $x.Trusted = $false } else { $list += $key; $x.Trusted = $true }
+        Save-TrustedList $list; Build-NetPage
+    }); [void]$wp.Children.Add($b4)
+    $b5 = & $mk 'net.a.kill' 'Secondary'
+    $b5.Add_Click({
+        $x = $this.Tag
+        $msg = (T 'net.kill.confirm') -f $x.Name; if ($x.Publisher -match 'Microsoft') { $msg += "`n`n" + (T 'net.kill.ms') }
+        if (Confirm-Box $msg) { Stop-Process -Id $x.PID -Force -ErrorAction SilentlyContinue; Write-AppLog "Kill $($x.Name)"; $App.Net.Report = @($App.Net.Report | Where-Object { $_.PID -ne $x.PID }); Build-NetPage }
+    }); [void]$wp.Children.Add($b5)
+    [void]$box.Children.Add($wp)
+    $note = New-Text (T 'net.vt.note') 11 'SubBrush'; [void]$box.Children.Add($note)
+    return $box
+}
+function Start-NetAnalysis {
+    $App.NetOpen = -1
+    Start-Task 'net.analyzing' 'Get-NetReportCore $TK.Args.Geo' @{ Geo = [bool]$App.Settings.netGeo } {
+        param($TK); $App.Net = $TK.Result; if ($TK.Result) { $App.Threat = $TK.Result.Threat }; Build-NetPage
+    }
+}
+function Start-LiveMonitor {
+    $App.MonSeen = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($c in @(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue)) { [void]$App.MonSeen.Add("$($c.OwningProcess)|$($c.RemoteAddress)|$($c.RemotePort)") }
+    $App.MonVpn = @(Get-VpnIps)
+    if (-not $App.Threat) {
+        $App.Threat = New-Object 'System.Collections.Generic.HashSet[string]'
+        $cache = Join-Path $DataDir 'threat-ips.txt'
+        if (Test-Path $cache) { foreach ($l in [IO.File]::ReadAllLines($cache)) { [void]$App.Threat.Add($l) } }
+    }
+    $App.MonOn = $true; $App.MonLast = Get-Date
+    Add-MonLine ((T 'net.mon.started') -f $App.MonSeen.Count) 'SubBrush'
+    Build-NetPage
+}
+function Add-MonLine([string]$text, [string]$brush) {
+    $t = New-Text $text 12 $brush; $t.TextWrapping = 'NoWrap'
+    [void]$App.MonList.Items.Add($t)
+    while ($App.MonList.Items.Count -gt 300) { $App.MonList.Items.RemoveAt(0) }
+    $App.MonList.ScrollIntoView($t)
+}
+function Step-LiveMonitor {
+    $App.MonLast = Get-Date
+    $new = @(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue | Where-Object {
+        -not (Test-PrivateIp "$($_.RemoteAddress)") -and $App.MonSeen.Add("$($_.OwningProcess)|$($_.RemoteAddress)|$($_.RemotePort)") })
+    $time = Get-Date -Format 'HH:mm:ss'
+    foreach ($g in ($new | Group-Object OwningProcess)) {
+        $pi = Get-ProcInfo ([int]$g.Name)
+        $isTorrent = ("$($pi.Name)" -match $TorrentApps)
+        foreach ($c in ($g.Group | Select-Object -First 4)) {
+            $warn = @(); $red = $false
+            if ($App.Threat -and $App.Threat.Contains("$($c.RemoteAddress)")) { $warn += (T 'net.mon.threat'); if (-not $isTorrent) { $red = $true } }
+            $via = ''
+            if ($App.MonVpn.Count -gt 0 -and "$($pi.Name)" -notmatch $VpnClientProc) {
+                if ($App.MonVpn -contains "$($c.LocalAddress)") { $via = '[VPN]' } else { $via = '[' + (T 'net.outside') + ']'; if ($isTorrent) { $red = $true } else { $warn += (T 'net.outside') } }
+            }
+            if ("$($pi.Name)" -match $RemoteAccessApps) { $warn += (T 'net.mon.remote') }
+            $br = 'TextBrush'; if ($warn.Count -gt 0) { $br = 'WarnBrush' }; if ($red) { $br = 'BadBrush'; [Console]::Beep(1000, 200) }
+            Add-MonLine ('{0}  + {1,-18} → {2}:{3}  {4} {5}' -f $time, $pi.Name, $c.RemoteAddress, $c.RemotePort, $via, ($warn -join ', ')) $br
+        }
+        if ($g.Count -gt 4) { Add-MonLine ((T 'net.mon.more') -f $time, ($g.Count - 4), $pi.Name) 'SubBrush' }
+    }
 }
 
 # ---------- Επιδιόρθωση ----------
@@ -688,6 +1075,7 @@ function Build-SettingsPage {
         [void]$UI.ThemePanel.Children.Add($rb)
     }
     $UI.ChkAuto.IsChecked = Test-AutoClean
+    $UI.ChkFlicker.IsChecked = [bool]$App.Settings.flicker
 }
 
 # ---------- Κείμενα σε όλο το παράθυρο ----------
@@ -696,17 +1084,17 @@ function Set-AllTexts {
     $os = $App.Os
     $UI.TxtOs.Text = "$($os.Name) $($os.Version)".Trim()
     $UI.TxtVersion.Text = "v$AppVersion · $(T 'app.for')"
-    $nav = @{ NavHome = 'nav.home'; NavClean = 'nav.clean'; NavTweaks = 'nav.tweaks'; NavApps = 'nav.apps'; NavSecurity = 'nav.security'; NavRepair = 'nav.repair'; NavTools = 'nav.tools'; NavSettings = 'nav.settings' }
+    $nav = @{ NavHome = 'nav.home'; NavClean = 'nav.clean'; NavTweaks = 'nav.tweaks'; NavApps = 'nav.apps'; NavNet = 'nav.net'; NavSecurity = 'nav.security'; NavRepair = 'nav.repair'; NavTools = 'nav.tools'; NavSettings = 'nav.settings' }
     foreach ($k in $nav.Keys) { $UI[$k].Content = T $nav[$k] }
     $txt = @{
         TxtRestart = 'restart.banner'; GDiskT = 'home.disk'; GRamT = 'home.ram'; GCpuT = 'home.cpu'; InfVpnT = 'home.vpn'; InfUpT = 'home.uptime'
         InfFreedT = 'home.freed'; QuickT = 'home.quick'; TxtTip = 'home.tip'; TxtAgeT = 'clean.age.t'; TxtAgeD = 'clean.age.d'
-        SpecT = 'spec.title'; SetLangT = 'set.lang'; SetThemeT = 'set.theme'; SetAutoT = 'set.auto.t'; SetAutoD = 'set.auto.d'; AboutT = 'about.t'
+        SpecT = 'spec.title'; SetFlickerT = 'set.flicker.t'; SetFlickerD = 'set.flicker.d'; SetLangT = 'set.lang'; SetThemeT = 'set.theme'; SetAutoT = 'set.auto.t'; SetAutoD = 'set.auto.d'; AboutT = 'about.t'
     }
     foreach ($k in $txt.Keys) { $UI[$k].Text = T $txt[$k] }
     $UI.AboutD.Text = (T 'about.d') -f $AppVersion
     $btn = @{
-        BtnQuickClean = 'home.btn.clean'; BtnQuickTweaks = 'home.btn.tweaks'; BtnQuickRestore = 'home.btn.restore'; BtnQuickClassic = 'home.btn.classic'
+        BtnQuickClean = 'home.btn.clean'; BtnQuickTweaks = 'home.btn.tweaks'; BtnQuickRestore = 'home.btn.restore'; BtnQuickClassic = 'home.btn.net'
         BtnScan = 'clean.btn.scan'; BtnClean = 'clean.btn.clean'; BtnCleanDefaults = 'clean.btn.defaults'
         BtnRec = 'tw.btn.rec'; BtnRestoreAll = 'tw.btn.restore'; BtnExplorer = 'tw.btn.explorer'
         BtnShortcut = 'set.btn.shortcut'; BtnLogs = 'set.btn.logs'; BtnUpdate = 'set.btn.update'; BtnClassic = 'set.btn.classic'; BtnGithub = 'about.github'; BtnCopySpecs = 'spec.copy'
@@ -714,7 +1102,7 @@ function Set-AllTexts {
     foreach ($k in $btn.Keys) { $UI[$k].Content = T $btn[$k] }
     if ($UI.LogList.Visibility -eq 'Visible') { $UI.BtnLog.Content = T 'log.hide' } else { $UI.BtnLog.Content = T 'log.show' }
     Update-AgeLabel
-    Build-CleanList; Build-TweakList; Build-RepairList; Build-ToolsList; Build-SettingsPage; Build-SpecGrid; Build-AppsPage; Build-SecurityPage
+    Build-CleanList; Build-TweakList; Build-RepairList; Build-ToolsList; Build-SettingsPage; Build-SpecGrid; Build-AppsPage; Build-SecurityPage; Build-NetPage; Build-CleanTabs; Build-NeonSign
     if ($App.SpecsLang -and $App.SpecsLang -ne $script:LangCode -and -not $App.Busy) { $App.SpecsLang = $script:LangCode; Start-SpecsScan }
     if (-not $App.Busy) { Set-Ready }
     Show-Page $App.Page
@@ -749,6 +1137,7 @@ function Open-MainWindow([string]$xaml) {
     $UI.NavTweaks.Add_Checked({ Show-Page 'Tweaks' })
     $UI.NavApps.Add_Checked({ Show-Page 'Apps' })
     $UI.NavSecurity.Add_Checked({ Show-Page 'Security' })
+    $UI.NavNet.Add_Checked({ Show-Page 'Net' })
     $UI.NavRepair.Add_Checked({ Show-Page 'Repair' })
     $UI.NavTools.Add_Checked({ Show-Page 'Tools' })
     $UI.NavSettings.Add_Checked({ Show-Page 'Settings' })
@@ -756,7 +1145,7 @@ function Open-MainWindow([string]$xaml) {
     $UI.BtnQuickClean.Add_Click({ $UI.NavClean.IsChecked = $true; Start-Clean -Defaults })
     $UI.BtnQuickTweaks.Add_Click({ $UI.NavTweaks.IsChecked = $true })
     $UI.BtnQuickRestore.Add_Click({ Start-Task 'rep.rp.t' 'New-RestorePointCore' @{} $null })
-    $UI.BtnQuickClassic.Add_Click({ Start-Classic })
+    $UI.BtnQuickClassic.Add_Click({ $UI.NavNet.IsChecked = $true })
     $UI.BtnCopySpecs.Add_Click({ Copy-Specs })
 
     $UI.SldAge.Value = [int]$App.Settings.ageDays
@@ -790,6 +1179,7 @@ function Open-MainWindow([string]$xaml) {
         $UI.ChkAuto.IsChecked = Test-AutoClean
         if (-not $ok) { $UI.TxtSetMsg.Text = T 'set.auto.fail' } elseif ($on) { $UI.TxtSetMsg.Text = T 'set.auto.on' } else { $UI.TxtSetMsg.Text = T 'set.auto.off' }
     })
+    $UI.ChkFlicker.Add_Click({ $App.Settings.flicker = [bool]$UI.ChkFlicker.IsChecked; Save-AppSettings $App.Settings; Update-SignTimer })
     $UI.BtnShortcut.Add_Click({ if (New-AppShortcut) { $UI.TxtSetMsg.Text = T 'set.shortcut.ok' } else { $UI.TxtSetMsg.Text = T 'set.shortcut.fail' } })
     $UI.BtnLogs.Add_Click({ New-Item -ItemType Directory -Path $CoreLogs -Force | Out-Null; Start-Process explorer.exe -ArgumentList "`"$CoreLogs`"" })
     $UI.BtnClassic.Add_Click({ Start-Classic })
@@ -817,7 +1207,8 @@ function Open-MainWindow([string]$xaml) {
     $Timer = [Windows.Threading.DispatcherTimer]::new()
     $Timer.Interval = [TimeSpan]::FromMilliseconds(150)
     $Timer.Add_Tick({
-        if ($App.Task) { Update-TaskUI }
+        if ($App.MonOn -and ((Get-Date) - $App.MonLast).TotalSeconds -ge 2) { Step-LiveMonitor }
+    if ($App.Task) { Update-TaskUI }
         elseif ($App.Page -eq 'Home') { Update-Dashboard }
     })
 
@@ -837,11 +1228,15 @@ function Open-MainWindow([string]$xaml) {
     Write-GuiStage 'texts and pages built'
     Add-LogLine ("$AppName v$AppVersion · $($App.Os.Name) $($App.Os.Version) (build $($App.Os.Build))") 'step'
     if ($App.SafeMode) { Add-LogLine 'Safe display mode (no glow effects)' 'warn' }
+    $SignTimer = [Windows.Threading.DispatcherTimer]::new()
+    $SignTimer.Interval = [TimeSpan]::FromMilliseconds(70)
+    $SignTimer.Add_Tick({ Step-NeonSign })
+    Update-SignTimer
     $Timer.Start()
     Write-GuiStage 'showing window...'
     try { [void]$Win.ShowDialog() }
     catch { Write-GuiStage ("SHOWDIALOG ERROR: " + $_.Exception.ToString()) }
-    $Timer.Stop()
+    $Timer.Stop(); $SignTimer.Stop(); $App.MonOn = $false
 
 }
 

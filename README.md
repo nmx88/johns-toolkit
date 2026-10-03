@@ -23,7 +23,10 @@ A friendly, portable toolkit with a neon dark/light interface. No installation, 
 | 🛠️ **Repair** | Windows Update reset (for errors like `0x80070490`), DISM + SFC system repair, restore points. Error codes are explained in plain language. |
 | 📦 **Apps** | Startup programs on/off, program updates with winget (risky ones explained, freeze option), removal of pre-installed apps. |
 | 🛡️ **Security** | Antivirus, firewall, UAC, Remote Desktop, SMBv1, Secure Boot, TPM, VPN and remote-access check, with quick fixes and a Defender scan. |
-| 🧰 **Advanced tools** | Network & VPN diagnostics, leftover check with backup, health report, large files. *(classic console mode for now)* |
+| 🌐 **Network & VPN** | Every program connected to the internet, VPN leak check for any VPN, known malicious IPs, Defender/VirusTotal checks, live monitoring and HTML report. |
+| 🧩 **Leftovers & large files** | Broken startup items, shortcuts, ghost apps and orphaned tasks (with backup and restore); the 40 largest files with "send to Recycle Bin". |
+| ❤️ **Health** | Disk health, temperature and SSD wear, uptime, battery report. |
+| ✨ **Neon sign** | A half-broken flickering neon "Welcome" sign on Home (can be turned off). |
 | 🔄 **Automation** | Optional weekly background cleanup, desktop shortcut, update check. |
 | 🖥️ **Your PC** | Full specs at a glance (CPU, RAM, GPU, disks, BIOS, TPM...) with one-click copy. VPN status for Mullvad, NordVPN, Proton, ExpressVPN, Surfshark and many more. |
 | 🎨 **9 themes** | Neon cyan, Synthwave, Matrix, Cyberpunk, Ocean, Crimson, Aurora, Light and automatic. |
