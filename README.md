@@ -29,6 +29,9 @@ A friendly, portable toolkit with a neon dark/light interface. No installation, 
 | ✨ **Neon sign** | A half-broken flickering neon "Welcome" sign on Home (can be turned off). |
 | 🔄 **Automation** | Optional weekly background cleanup, desktop shortcut, update check. |
 | 🖥️ **Your PC** | Full specs at a glance (CPU, RAM, GPU, disks, BIOS, TPM...) with one-click copy. VPN status for Mullvad, NordVPN, Proton, ExpressVPN, Surfshark and many more. |
+| 🧑‍💻 **Developer tools** | PATH cleaner with backup, "who uses port X", DNS switcher with speed test. |
+| 🩺 **Diagnostics** | Crash history explained, problem devices and drivers, Windows Update history/pending/hide with explained error codes. |
+| 📤 **Uninstaller & duplicates** | Uninstall programs and remove what they leave behind; find identical files by content. |
 | ⚡ **Speed test & network repair** | Download/upload/ping/jitter with history; quick network fix and full Winsock/TCP-IP reset. |
 | 🐳 **WSL / Docker** | Shrink virtual disks to give back unused space; VM, Docker and database files are protected from accidental deletion. |
 | 🎨 **14 themes + automatic** | Neon cyan, Synthwave, Matrix, Cyberpunk, Ocean, Crimson, Aurora, Vaporwave, Toxic, Ice, Gold, Sunset, Nightclub and Light, plus "same as Windows". |

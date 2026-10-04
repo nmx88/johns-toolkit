@@ -9,6 +9,10 @@ $App = @{
     Os = (Get-OSInfo); AppsTab = 'startup'; Updates = $null; Pins = @(); UpdSel = @{}; NoWinget = $false; Bloat = $null; BloatSel = @{}; Security = $null; StartupEntries = @()
     CleanTab = 'temp'; Leftovers = $null; LeftSel = @{}; LeftMsg = ''; BigLoc = 'user'; Big = $null
     Net = $null; NetOpen = -1; Threat = $null; MonOn = $false; MonList = $null; MonLast = [datetime]::MinValue
+    DevTab = 'path'; PathSel = $null; PortBox = $null; PortNum = 0; PortRes = @(); DnsPick = $null; DnsTimes = $null
+    DiagTab = 'crash'; Crash = $null; Devices = $null; Wu = $null
+    Programs = $null; UnBox = $null; UnRows = $null; UnSort = 'name'; UnLeft = $null; UnLeftSel = @{}
+    DupLoc = 'user'; DupMin = '10'; Dupes = $null; DupSel = @{}
     Rand = [Random]::new(); SignLetters = @(); SignBroken = -1; SignOff = @{}; SignFrameOff = 0; Pal = $null
 }
 Set-AppLanguage $App.Settings.lang
@@ -158,7 +162,7 @@ function Update-TaskUI {
 }
 
 # ---------- Πλοήγηση ----------
-$Pages = [ordered]@{ Home = 'PageHome'; Clean = 'PageClean'; Tweaks = 'PageTweaks'; Apps = 'PageApps'; Net = 'PageNet'; Security = 'PageSecurity'; Repair = 'PageRepair'; Tools = 'PageTools'; Settings = 'PageSettings' }
+$Pages = [ordered]@{ Home = 'PageHome'; Clean = 'PageClean'; Tweaks = 'PageTweaks'; Apps = 'PageApps'; Net = 'PageNet'; Security = 'PageSecurity'; Diag = 'PageDiag'; Dev = 'PageDev'; Repair = 'PageRepair'; Tools = 'PageTools'; Settings = 'PageSettings' }
 function Show-Page([string]$name) {
     $App.Page = $name
     foreach ($k in $Pages.Keys) { if ($k -eq $name) { $UI[$Pages[$k]].Visibility = 'Visible' } else { $UI[$Pages[$k]].Visibility = 'Collapsed' } }
@@ -169,6 +173,8 @@ function Show-Page([string]$name) {
     if ($name -eq 'Home') { Update-Dashboard -Force }
     if ($name -eq 'Security' -and $null -eq $App.Security -and -not $App.Busy) { Start-SecurityCheck }
     if ($name -eq 'Clean' -and $App.CleanTab -eq 'left') { Build-LeftoverList }
+    if ($name -eq 'Diag') { Build-DiagBody }
+    if ($name -eq 'Dev') { Build-DevBody }
     if ($name -eq 'Apps' -and $App.AppsTab -eq 'startup') { Build-AppsBody }
 }
 
@@ -225,7 +231,7 @@ function Build-SpecGrid {
 }
 function Start-SpecsScan {
     $App.Specs = @(); Build-SpecGrid
-    Start-Task 'spec.loading' 'Get-PcSpecs' @{} { param($TK); $App.Specs = @($TK.Result); Build-SpecGrid } -Silent
+    Start-Task 'spec.loading' 'Get-PcSpecs' @{} { param($TK); $App.Specs = ConvertTo-CleanList $TK.Result; Build-SpecGrid } -Silent
 }
 function Copy-Specs {
     $lines = @("John's Toolkit v$AppVersion - " + (T 'spec.title'), '')
@@ -358,6 +364,10 @@ function Build-TweakList {
     $card.Child = $sp; [void]$UI.TweakList.Children.Add($card)
 }
 
+# Κάθε λίστα που επιστρέφει μια εργασία περνά από εδώ: χωρίς κενά στοιχεία, πάντα πίνακας.
+# (Στο PowerShell το @($null) έχει 1 στοιχείο· αυτό έκανε σελίδες να μένουν κενές.)
+function ConvertTo-CleanList($x) { return , @(@($x) | Where-Object { $null -ne $_ }) }
+
 # ---------- Μικρά βοηθητικά για τις νέες σελίδες ----------
 function New-Row($left, $right) {
     $g = [Windows.Controls.Grid]::new()
@@ -383,7 +393,7 @@ function Set-AppsMsg([string]$text, [string]$brush = 'GoodBrush') { $UI.TxtAppsM
 # ---------- Εφαρμογές ----------
 function Build-AppsPage {
     $UI.AppsTabs.Children.Clear()
-    foreach ($tab in @('startup', 'updates', 'bloat')) {
+    foreach ($tab in @('startup', 'updates', 'uninstall', 'bloat')) {
         $rb = New-Pill (T "apps.tab.$tab") $tab 'appstab' ($tab -eq $App.AppsTab)
         $rb.Add_Checked({ $App.AppsTab = [string]$this.Tag; Set-AppsMsg ''; Build-AppsBody })
         [void]$UI.AppsTabs.Children.Add($rb)
@@ -392,7 +402,7 @@ function Build-AppsPage {
 }
 function Build-AppsBody {
     $UI.AppsBody.Children.Clear()
-    switch ($App.AppsTab) { 'startup' { Build-StartupList } 'updates' { Build-UpdatesList } 'bloat' { Build-BloatList } }
+    switch ($App.AppsTab) { 'startup' { Build-StartupList } 'updates' { Build-UpdatesList } 'uninstall' { Build-UninstallTab } 'bloat' { Build-BloatList } }
 }
 
 function Build-StartupList {
@@ -428,7 +438,7 @@ function Build-StartupList {
     }
 }
 
-function Get-UpdSelected { return @($App.Updates | Where-Object { $App.UpdSel[$_.Id] }) }
+function Get-UpdSelected { if (-not $App.Updates) { return @() }; return @($App.Updates | Where-Object { $_ -and $App.UpdSel["$($_.Id)"] }) }
 function Build-UpdatesList {
     $p = $UI.AppsBody
     $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
@@ -483,7 +493,7 @@ function Start-UpdateScan {
     Start-Task 'upd.scanning' 'Get-UpdateInfo' @{} {
         param($TK)
         $r = $TK.Result; if (-not $r) { return }
-        $App.NoWinget = [bool]$r.NoWinget; $App.Updates = @($r.Updates); $App.Pins = @($r.Pins); $App.UpdSel = @{}
+        $App.NoWinget = [bool]$r.NoWinget; $App.Updates = ConvertTo-CleanList $r.Updates; $App.Pins = ConvertTo-CleanList $r.Pins; $App.UpdSel = @{}
         foreach ($u in $App.Updates) { $App.UpdSel[$u.Id] = ($u.Level -lt 2) }
         Set-AppsMsg ((T 'upd.found') -f @($App.Updates).Count)
         if ($App.AppsTab -eq 'updates') { Build-AppsBody }
@@ -518,13 +528,13 @@ function Build-BloatList {
     $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
     [void]$sp.Children.Add((New-Text (T 'bl.intro') 13 'SubBrush'))
     $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,0'
-    $sel = @($App.Bloat | Where-Object { $App.BloatSel[$_.Pkg] })
+    $sel = @(Get-BloatSelected)
     $b = New-Button ((T 'bl.remove') -f $sel.Count) 'Primary'; $b.Add_Click({ Start-BloatRemove }); [void]$wp.Children.Add($b)
     [void]$sp.Children.Add($wp); $card.Child = $sp; [void]$p.Children.Add($card)
     if ($null -eq $App.Bloat) {
         [void]$p.Children.Add((New-Text (T 'bl.loading') 14 'SubBrush'))
         if (-not $App.Busy) {
-            Start-Task 'bl.loading' 'Get-BloatInstalled' @{} { param($TK); $App.Bloat = @($TK.Result); if ($App.AppsTab -eq 'bloat') { Build-AppsBody } } -Silent
+            Start-Task 'bl.loading' 'Get-BloatInstalled' @{} { param($TK); $App.Bloat = ConvertTo-CleanList $TK.Result; if ($App.AppsTab -eq 'bloat') { Build-AppsBody } } -Silent
         }
         return
     }
@@ -545,8 +555,9 @@ function Build-BloatList {
         $c.Child = $g; [void]$p.Children.Add($c)
     }
 }
+function Get-BloatSelected { if (-not $App.Bloat) { return @() }; return @($App.Bloat | Where-Object { $_ -and $App.BloatSel["$($_.Pkg)"] }) }
 function Start-BloatRemove {
-    $sel = @($App.Bloat | Where-Object { $App.BloatSel[$_.Pkg] })
+    $sel = @(Get-BloatSelected)
     if ($sel.Count -eq 0) { Show-Info (T 'bl.none.sel'); return }
     if (-not (Confirm-Box ((T 'bl.confirm') -f $sel.Count, (($sel | ForEach-Object { '• ' + $_.Name }) -join "`n")))) { return }
     $items = @($sel | ForEach-Object { @{ Pkg = $_.Pkg; Name = $_.Name } })
@@ -603,7 +614,7 @@ function Build-SecurityPage {
 }
 function Start-SecurityCheck {
     $App.Security = $null; Build-SecurityPage
-    Start-Task 'sec.loading' 'Get-SecurityAndHealth' @{} { param($TK); $App.Security = @($TK.Result); Build-SecurityPage }
+    Start-Task 'sec.loading' 'Get-SecurityAndHealth' @{} { param($TK); $App.Security = ConvertTo-CleanList $TK.Result; Build-SecurityPage }
 }
 
 # ---------- Σχέδιο ενέργειας (στην κορυφή των Ρυθμίσεων Windows) ----------
@@ -742,7 +753,7 @@ function Update-SignTimer {
 # ======================================================================
 function Build-CleanTabs {
     $UI.CleanTabs.Children.Clear()
-    foreach ($tab in @('temp', 'left', 'big')) {
+    foreach ($tab in @('temp', 'left', 'big', 'dupes')) {
         $rb = New-Pill (T "clean.tab.$tab") $tab 'cleantab' ($tab -eq $App.CleanTab)
         $rb.Add_Checked({ $App.CleanTab = [string]$this.Tag; Show-CleanTab })
         [void]$UI.CleanTabs.Children.Add($rb)
@@ -750,11 +761,12 @@ function Build-CleanTabs {
     Show-CleanTab
 }
 function Show-CleanTab {
-    $UI.CleanMain.Visibility = 'Collapsed'; $UI.LeftBody.Visibility = 'Collapsed'; $UI.BigBody.Visibility = 'Collapsed'
+    $UI.CleanMain.Visibility = 'Collapsed'; $UI.LeftBody.Visibility = 'Collapsed'; $UI.BigBody.Visibility = 'Collapsed'; $UI.DupeBody.Visibility = 'Collapsed'
     switch ($App.CleanTab) {
         'temp' { $UI.CleanMain.Visibility = 'Visible' }
         'left' { $UI.LeftBody.Visibility = 'Visible'; Build-LeftoverList }
         'big' { $UI.BigBody.Visibility = 'Visible'; Build-BigList }
+        'dupes' { $UI.DupeBody.Visibility = 'Visible'; Build-DupeList }
     }
 }
 
@@ -816,7 +828,7 @@ function Start-LeftoverScan {
         param($TK)
         $order = @{ startup = 0; shortcut = 1; uninstall = 2; task = 3 }
         $list = [System.Collections.ArrayList]::new()
-        foreach ($x in (@($TK.Result) | Sort-Object @{ e = { $order["$($_.Cat)"] } }, Label)) { [void]$list.Add($x) }
+        foreach ($x in ((ConvertTo-CleanList $TK.Result) | Sort-Object @{ e = { $order["$($_.Cat)"] } }, Label)) { [void]$list.Add($x) }
         $App.Leftovers = $list; $App.LeftSel = @{}; for ($i = 0; $i -lt $list.Count; $i++) { $App.LeftSel[$i] = $true }
         Build-LeftoverList
     }
@@ -1135,6 +1147,500 @@ function Step-LiveMonitor {
     }
 }
 
+# ======================================================================
+#  v2.5: DEVELOPER (PATH | Θύρες | DNS), ΔΙΑΓΝΩΣΗ, ΑΠΕΓΚΑΤΑΣΤΑΣΗ, ΔΙΠΛΑ ΑΡΧΕΙΑ
+# ======================================================================
+function New-TextBox([string]$text, [double]$width) {
+    $tb = [Windows.Controls.TextBox]::new(); $tb.Text = $text; $tb.Width = $width; $tb.FontSize = 15; $tb.Padding = '8,6'; $tb.Margin = '0,0,10,8'
+    $tb.SetResourceReference([Windows.Controls.Control]::BackgroundProperty, 'BgBrush')
+    $tb.SetResourceReference([Windows.Controls.Control]::ForegroundProperty, 'TextBrush')
+    $tb.SetResourceReference([Windows.Controls.Control]::BorderBrushProperty, 'LineBrush')
+    return $tb
+}
+function Add-Detached($panel, $el) { if ($el.Parent) { $el.Parent.Children.Remove($el) }; [void]$panel.Children.Add($el) }
+function Set-DevMsg([string]$t, [string]$b = 'GoodBrush') { $UI.TxtDevMsg.Text = $t; $UI.TxtDevMsg.SetResourceReference([Windows.Controls.TextBlock]::ForegroundProperty, $b) }
+function New-InfoCard([string]$title, [string]$desc) {
+    $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
+    if ($title) { [void]$sp.Children.Add((New-Text $title 16 'TextBrush' 'SemiBold')) }
+    if ($desc) { $d = New-Text $desc 12 'SubBrush'; $d.Margin = '0,2,0,0'; [void]$sp.Children.Add($d) }
+    $card.Child = $sp
+    return @{ Card = $card; Panel = $sp }
+}
+function New-ItemCard { $c = New-Card; $c.Padding = '18,12'; $c.Margin = '0,0,0,8'; return $c }
+
+# ---------- Developer ----------
+function Build-DevPage {
+    $UI.DevTabs.Children.Clear()
+    foreach ($tab in @('path', 'ports', 'dns')) {
+        $rb = New-Pill (T "dev.tab.$tab") $tab 'devtab' ($tab -eq $App.DevTab)
+        $rb.Add_Checked({ $App.DevTab = [string]$this.Tag; Set-DevMsg ''; Build-DevBody })
+        [void]$UI.DevTabs.Children.Add($rb)
+    }
+    Build-DevBody
+}
+function Build-DevBody {
+    $UI.DevBody.Children.Clear()
+    switch ($App.DevTab) { 'path' { Build-PathTab } 'ports' { Build-PortsTab } 'dns' { Build-DnsTab } }
+}
+function Build-PathTab {
+    $p = $UI.DevBody
+    $rep = Get-PathReport
+    if ($null -eq $App.PathSel) { $App.PathSel = @{}; foreach ($e in @($rep.Machine) + @($rep.User)) { if ($e -and $e.State -ne 'ok') { $App.PathSel["$($e.Scope)|$($e.Index)"] = $true } } }
+    $ic = New-InfoCard (T 'path.t') (T 'path.d')
+    if ($rep.FirstPython) {
+        $fp = $rep.FirstPython; $nm = $fp.Python; if ($nm -eq 'store-alias') { $nm = T 'path.py.store' }
+        $t = New-Text ((T 'path.py') -f $nm, $fp.Expanded) 13 'AccentBrush' 'SemiBold'; $t.Margin = '0,10,0,0'; [void]$ic.Panel.Children.Add($t)
+        if ($fp.Python -eq 'store-alias') { $w = New-Text (T 'path.py.storehint') 12 'WarnBrush'; [void]$ic.Panel.Children.Add($w) }
+    }
+    $sel = @($App.PathSel.Keys | Where-Object { $App.PathSel[$_] })
+    $b = New-Button ((T 'path.clean') -f $sel.Count) 'Primary'; $b.HorizontalAlignment = 'Left'; $b.Margin = '0,12,0,0'
+    $b.Add_Click({
+        $keys = @($App.PathSel.Keys | Where-Object { $App.PathSel[$_] })
+        if ($keys.Count -eq 0) { Show-Info (T 'path.none.sel'); return }
+        if (-not (Confirm-Box ((T 'path.confirm') -f $keys.Count))) { return }
+        foreach ($scope in 'Machine', 'User') {
+            $idx = @($keys | Where-Object { $_ -like "$scope|*" } | ForEach-Object { [int]($_ -split '\|')[1] })
+            if ($idx.Count -gt 0) { [void](Set-CleanPath $scope $idx) }
+        }
+        $App.PathSel = $null; Set-DevMsg ((T 'path.done') -f $keys.Count); Build-DevBody
+    })
+    [void]$ic.Panel.Children.Add($b); [void]$p.Children.Add($ic.Card)
+    foreach ($scope in 'Machine', 'User') {
+        [void]$p.Children.Add((New-GroupHeader (T "path.scope.$($scope.ToLower())")))
+        foreach ($e in @($rep[$scope])) {
+            if (-not $e) { continue }
+            $c = New-ItemCard; $c.Padding = '16,8'; $c.Margin = '0,0,0,6'
+            $g = [Windows.Controls.Grid]::new()
+            foreach ($w in @('Auto', '*', 'Auto')) { $cd = [Windows.Controls.ColumnDefinition]::new(); $cd.Width = $w; [void]$g.ColumnDefinitions.Add($cd) }
+            $chk = [Windows.Controls.CheckBox]::new(); $chk.Style = $Win.FindResource('Check'); $chk.Margin = '0,0,14,0'; $chk.Tag = "$($e.Scope)|$($e.Index)"
+            $chk.IsChecked = [bool]$App.PathSel[$chk.Tag]; $chk.ToolTip = T 'path.remove'
+            $chk.Add_Click({ $App.PathSel[[string]$this.Tag] = [bool]$this.IsChecked; Build-DevBody })
+            $s = [Windows.Controls.StackPanel]::new()
+            $shown = $e.Raw; if (-not $shown.Trim()) { $shown = T 'path.emptyentry' }
+            $tb = New-Text $shown 13 'TextBrush'; $tb.FontFamily = [Windows.Media.FontFamily]::new('Cascadia Mono, Consolas'); [void]$s.Children.Add($tb)
+            if ($e.Raw -ne $e.Expanded -and $e.Raw.Trim()) { [void]$s.Children.Add((New-Text ('= ' + $e.Expanded) 11 'SubBrush')) }
+            if ($e.Python) { $nm = $e.Python; if ($nm -eq 'store-alias') { $nm = T 'path.py.store' }; [void]$s.Children.Add((New-Text ('🐍 ' + $nm) 11 'AccentBrush')) }
+            $map = @{ ok = 'GoodBrush'; missing = 'BadBrush'; dup = 'WarnBrush'; empty = 'WarnBrush' }
+            $bd = New-Badge (T "path.st.$($e.State)") $map[$e.State]; $bd.VerticalAlignment = 'Center'; $bd.Margin = '12,0,0,0'
+            [Windows.Controls.Grid]::SetColumn($s, 1); [Windows.Controls.Grid]::SetColumn($bd, 2)
+            [void]$g.Children.Add($chk); [void]$g.Children.Add($s); [void]$g.Children.Add($bd)
+            $c.Child = $g; [void]$p.Children.Add($c)
+        }
+    }
+    $bk = @(Get-PathBackups)
+    if ($bk.Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'path.backups')))
+        foreach ($f in $bk) {
+            $c = New-ItemCard
+            $s = New-Text ("$($f.LastWriteTime.ToString('g', (Get-LangCulture)))   ·   $($f.Name)") 13 'TextBrush'
+            $rb = New-Button (T 'lo.restore') 'Secondary'; $rb.Tag = $f.FullName
+            $rb.Add_Click({ if (Confirm-Box (T 'path.restore.confirm')) { $sc = Restore-PathBackup ([string]$this.Tag); $App.PathSel = $null; Set-DevMsg ((T 'path.restored') -f $sc); Build-DevBody } })
+            $c.Child = (New-Row $s $rb); [void]$p.Children.Add($c)
+        }
+    }
+}
+function Build-PortsTab {
+    $p = $UI.DevBody
+    $ic = New-InfoCard (T 'port.t') (T 'port.d')
+    $row = [Windows.Controls.WrapPanel]::new(); $row.Margin = '0,12,0,0'
+    if (-not $App.PortBox) {
+        $App.PortBox = New-TextBox '' 120
+        $App.PortBox.Add_KeyDown({ if ("$($_.Key)" -eq 'Return') { Invoke-PortSearch $App.PortBox.Text } })
+    }
+    Add-Detached $row $App.PortBox
+    $b = New-Button (T 'port.find') 'Primary'; $b.Margin = '0,0,10,8'; $b.Add_Click({ Invoke-PortSearch $App.PortBox.Text }); [void]$row.Children.Add($b)
+    $b2 = New-Button (T 'port.all') 'Secondary'; $b2.Margin = '0,0,10,8'; $b2.Add_Click({ $App.PortNum = -1; Build-DevBody }); [void]$row.Children.Add($b2)
+    [void]$ic.Panel.Children.Add($row)
+    $quick = [Windows.Controls.WrapPanel]::new()
+    foreach ($q in 80, 443, 3000, 5000, 5432, 1433, 3306, 6379, 8080, 27017) {
+        $qb = New-Pill "$q" "$q" 'portq' ($App.PortNum -eq $q)
+        $qb.Add_Checked({ $App.PortBox.Text = [string]$this.Tag; Invoke-PortSearch ([string]$this.Tag) })
+        [void]$quick.Children.Add($qb)
+    }
+    [void]$ic.Panel.Children.Add($quick); [void]$p.Children.Add($ic.Card)
+    if ($App.PortNum -eq -1) {
+        [void]$p.Children.Add((New-GroupHeader (T 'port.listening')))
+        $groups = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Group-Object OwningProcess)
+        foreach ($g in $groups) {
+            $pr = Get-Process -Id ([int]$g.Name) -ErrorAction SilentlyContinue
+            $nm = if ($pr) { $pr.ProcessName } elseif ([int]$g.Name -eq 4) { 'System' } else { "PID $($g.Name)" }
+            $ports = (@($g.Group | ForEach-Object { [int]$_.LocalPort }) | Sort-Object -Unique) -join ', '
+            $c = New-ItemCard; $c.Padding = '16,8'; $c.Margin = '0,0,0,6'
+            $c.Child = (New-Text ("$nm  (PID $($g.Name))   →   $ports") 13 'TextBrush'); [void]$p.Children.Add($c)
+        }
+        return
+    }
+    if ($App.PortNum -le 0) { return }
+    $res = @($App.PortRes)
+    if ($res.Count -eq 0) { [void]$p.Children.Add((New-Text ((T 'port.free') -f $App.PortNum) 15 'GoodBrush' 'SemiBold')); return }
+    [void]$p.Children.Add((New-GroupHeader ((T 'port.used') -f $App.PortNum)))
+    foreach ($r in $res) {
+        $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+        [void]$s.Children.Add((New-Text ("$($r.Name)   (PID $($r.PID))") 15 'TextBrush' 'SemiBold'))
+        if ($r.Path) { [void]$s.Children.Add((New-Text $r.Path 12 'SubBrush')) }
+        if (@($r.Services).Count -gt 0) { [void]$s.Children.Add((New-Text ((T 'port.services') -f (@($r.Services) -join ', ')) 12 'AccentBrush')) }
+        foreach ($l in @($r.Lines)) { $lt = New-Text ("$($l.Proto)  $($l.Local)  $($l.Remote)  $($l.State)") 12 'SubBrush'; $lt.FontFamily = [Windows.Media.FontFamily]::new('Cascadia Mono, Consolas'); [void]$s.Children.Add($lt) }
+        $k = New-Button (T 'net.a.kill') 'Secondary'; $k.Tag = $r
+        $k.Add_Click({
+            $x = $this.Tag; $msg = (T 'net.kill.confirm') -f $x.Name
+            if ($x.PID -le 4 -or $x.Name -match '^(svchost|lsass|wininit|services|System)$' -or @($x.Services).Count -gt 0) { $msg += "`n`n" + (T 'port.kill.sys') }
+            if (Confirm-Box $msg) { Stop-Process -Id $x.PID -Force -ErrorAction SilentlyContinue; Write-AppLog "Kill port owner $($x.Name)"; Invoke-PortSearch "$($App.PortNum)" }
+        })
+        $c.Child = (New-Row $s $k); [void]$p.Children.Add($c)
+    }
+}
+function Invoke-PortSearch([string]$txt) {
+    $n = 0
+    if (-not [int]::TryParse("$txt".Trim(), [ref]$n) -or $n -lt 1 -or $n -gt 65535) { Set-DevMsg (T 'port.bad') 'WarnBrush'; return }
+    $App.PortNum = $n; $App.PortRes = @(Find-PortUsers $n); Set-DevMsg ''; Build-DevBody
+}
+function Build-DnsTab {
+    $p = $UI.DevBody
+    $ic = New-InfoCard (T 'dns.t') (T 'dns.d')
+    $vpn = @(Get-VpnStatus | Where-Object { $_.Kind -eq 'vpn' } | ForEach-Object { $_.Name })
+    if ($vpn.Count -gt 0) { $w = New-Text ('⚠ ' + ((T 'dns.vpn') -f ($vpn -join ' + '))) 12 'WarnBrush' 'SemiBold'; $w.Margin = '0,8,0,0'; [void]$ic.Panel.Children.Add($w) }
+    foreach ($a in @(Get-DnsStatus)) {
+        $t = New-Text ((T 'dns.now') -f $a.Name, (T "dns.p.$($a.Preset)"), $a.Servers) 13 'TextBrush'; $t.Margin = '0,8,0,0'; [void]$ic.Panel.Children.Add($t)
+    }
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,0'
+    foreach ($k in $DnsPresets.Keys) {
+        $lbl = T "dns.p.$k"
+        if ($App.DnsTimes -and $App.DnsTimes.Contains($k)) { $ms = $App.DnsTimes[$k]; if ($ms -ge 0) { $lbl += "  · $ms ms" } else { $lbl += '  · —' } }
+        $rb = New-Pill $lbl $k 'dnsp' ($k -eq $App.DnsPick)
+        $rb.Add_Checked({ $App.DnsPick = [string]$this.Tag })
+        [void]$wp.Children.Add($rb)
+    }
+    [void]$ic.Panel.Children.Add($wp)
+    $bw = [Windows.Controls.WrapPanel]::new(); $bw.Margin = '0,8,0,0'
+    $b1 = New-Button (T 'dns.apply') 'Primary'; $b1.Margin = '0,0,10,8'
+    $b1.Add_Click({
+        if (-not $App.DnsPick) { Show-Info (T 'dns.pick'); return }
+        if (-not (Confirm-Box ((T 'dns.confirm') -f (T "dns.p.$($App.DnsPick)")))) { return }
+        $n = Set-DnsPreset $App.DnsPick; Set-DevMsg ((T 'dns.done') -f (T "dns.p.$($App.DnsPick)"), $n); Build-DevBody
+    }); [void]$bw.Children.Add($b1)
+    $b2 = New-Button (T 'dns.measure') 'Secondary'; $b2.Margin = '0,0,10,8'
+    $b2.Add_Click({ Start-Task 'dns.measuring' 'Measure-DnsPresets' @{} { param($TK); if ($TK.Result) { $App.DnsTimes = $TK.Result }; Build-DevBody } }); [void]$bw.Children.Add($b2)
+    [void]$ic.Panel.Children.Add($bw)
+    $n = New-Text ('↳ ' + (T 'dns.note')) 12 'Accent2Brush'; $n.Margin = '0,4,0,0'; [void]$ic.Panel.Children.Add($n)
+    [void]$p.Children.Add($ic.Card)
+}
+
+# ---------- Διάγνωση ----------
+function Build-DiagPage {
+    $UI.DiagTabs.Children.Clear()
+    foreach ($tab in @('crash', 'devices', 'wu')) {
+        $rb = New-Pill (T "diag.tab.$tab") $tab 'diagtab' ($tab -eq $App.DiagTab)
+        $rb.Add_Checked({ $App.DiagTab = [string]$this.Tag; Build-DiagBody })
+        [void]$UI.DiagTabs.Children.Add($rb)
+    }
+    Build-DiagBody
+}
+function Build-DiagBody {
+    $UI.DiagBody.Children.Clear()
+    switch ($App.DiagTab) { 'crash' { Build-CrashTab } 'devices' { Build-DeviceTab } 'wu' { Build-WuTab } }
+}
+function Start-DiagLoad([string]$what) {
+    switch ($what) {
+        'crash' { Start-Task 'cr.loading' 'Get-CrashHistory 30' @{} { param($TK); if ($TK.Result) { $App.Crash = $TK.Result } else { $App.Crash = @{ Failed = $true } }; Build-DiagBody } }
+        'devices' { Start-Task 'dv.loading' 'Get-DeviceReport' @{} { param($TK); if ($TK.Result) { $App.Devices = $TK.Result } else { $App.Devices = @{ Failed = $true } }; Build-DiagBody } }
+        'wu' { Start-Task 'wu.loading' 'Get-WuInfo' @{} { param($TK); if ($TK.Result) { $App.Wu = $TK.Result } else { $App.Wu = @{ Failed = $true } }; Build-DiagBody } }
+    }
+}
+function Add-DiagHeader($p, [string]$tkey, [string]$dkey, [string]$what, $extra) {
+    $ic = New-InfoCard (T $tkey) (T $dkey)
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,0'
+    $b = New-Button (T 'diag.refresh') 'Primary'; $b.Margin = '0,0,10,8'; $b.Tag = $what; $b.Add_Click({ Start-DiagLoad ([string]$this.Tag) }); [void]$wp.Children.Add($b)
+    foreach ($x in @($extra)) { if ($x) { $x.Margin = '0,0,10,8'; [void]$wp.Children.Add($x) } }
+    [void]$ic.Panel.Children.Add($wp)
+    return $ic
+}
+function Build-CrashTab {
+    $p = $UI.DiagBody; $d = $App.Crash
+    $rel = New-Button (T 'cr.rel') 'Secondary'; $rel.Add_Click({ Start-Process 'perfmon.exe' -ArgumentList '/rel' })
+    $ic = Add-DiagHeader $p 'cr.t' 'cr.d' 'crash' @($rel)
+    if (-not $d) { [void]$ic.Panel.Children.Insert(1, (New-Text (T 'diag.notloaded') 13 'SubBrush')); [void]$p.Children.Add($ic.Card); if (-not $App.Busy) { Start-DiagLoad 'crash' }; return }
+    if ($d.Failed) { [void]$ic.Panel.Children.Insert(1, (New-Text (T 'diag.failed') 14 'WarnBrush' 'SemiBold')); [void]$p.Children.Add($ic.Card); return }
+    $nApps = 0; foreach ($a in @($d.Apps)) { if ($a) { $nApps += $a.Crashes + $a.Hangs } }
+    $br = 'GoodBrush'; if (@($d.Bsod).Count -gt 0) { $br = 'BadBrush' } elseif (@($d.Power).Count -gt 0 -or $nApps -gt 0) { $br = 'WarnBrush' }
+    $sum = New-Text ((T 'cr.summary') -f $d.Days, @($d.Bsod).Count, @($d.Power).Count, $nApps) 16 $br 'SemiBold'; $sum.Margin = '0,10,0,0'
+    [void]$ic.Panel.Children.Insert(1, $sum); [void]$p.Children.Add($ic.Card)
+    if (@($d.Bsod).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'cr.bsod')))
+        foreach ($b in @($d.Bsod)) {
+            $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+            [void]$s.Children.Add((New-Text ("$($b.When.ToString('g', (Get-LangCulture)))   ·   $($b.Code)") 14 'BadBrush' 'SemiBold'))
+            [void]$s.Children.Add((New-Text (T "cr.k.$($b.Kind)") 12 'SubBrush'))
+            $c.Child = $s; [void]$p.Children.Add($c)
+        }
+        if ($d.Dumps -gt 0) { [void]$p.Children.Add((New-Text ((T 'cr.dumps') -f $d.Dumps) 12 'SubBrush')) }
+    }
+    if (@($d.Power).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'cr.power')))
+        $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+        [void]$s.Children.Add((New-Text ((@($d.Power) | Select-Object -First 8 | ForEach-Object { $_.ToString('g', (Get-LangCulture)) }) -join '   ·   ') 13 'WarnBrush'))
+        [void]$s.Children.Add((New-Text (T 'cr.power.d') 12 'SubBrush'))
+        $c.Child = $s; [void]$p.Children.Add($c)
+    }
+    if (@($d.Apps).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'cr.apps')))
+        foreach ($a in @($d.Apps)) {
+            $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+            [void]$s.Children.Add((New-Text ((T 'cr.app') -f $a.Name, $a.Crashes, $a.Hangs) 14 'TextBrush' 'SemiBold'))
+            $line = (T 'cr.last') -f $a.Last.ToString('g', (Get-LangCulture)); if ($a.Module) { $line += ' · ' + ((T 'cr.module') -f $a.Module) }
+            [void]$s.Children.Add((New-Text $line 12 'SubBrush'))
+            if ($a.Hint) { [void]$s.Children.Add((New-Text ('↳ ' + (T "cr.h.$($a.Hint)")) 12 'Accent2Brush')) }
+            $c.Child = $s; [void]$p.Children.Add($c)
+        }
+    }
+    if (@($d.Bsod).Count -eq 0 -and @($d.Power).Count -eq 0 -and $nApps -eq 0) { [void]$p.Children.Add((New-Text (T 'cr.none') 15 'GoodBrush' 'SemiBold')) }
+}
+function Build-DeviceTab {
+    $p = $UI.DiagBody; $d = $App.Devices
+    $dm = New-Button (T 'dv.devmgr') 'Secondary'; $dm.Add_Click({ Start-Process 'devmgmt.msc' })
+    $sc = New-Button (T 'dv.scan') 'Secondary'; $sc.Add_Click({ Start-Process 'pnputil.exe' -ArgumentList '/scan-devices' -WindowStyle Hidden; Show-Info (T 'dv.scanned') })
+    $ic = Add-DiagHeader $p 'dv.t' 'dv.d' 'devices' @($dm, $sc)
+    [void]$p.Children.Add($ic.Card)
+    if (-not $d) { [void]$p.Children.Add((New-Text (T 'diag.notloaded') 13 'SubBrush')); if (-not $App.Busy) { Start-DiagLoad 'devices' }; return }
+    if ($d.Failed) { [void]$p.Children.Add((New-Text (T 'diag.failed') 14 'WarnBrush' 'SemiBold')); return }
+    [void]$p.Children.Add((New-GroupHeader (T 'dv.problems')))
+    if (@($d.Problems).Count -eq 0) { [void]$p.Children.Add((New-Text (T 'dv.noproblems') 14 'GoodBrush' 'SemiBold')) }
+    foreach ($x in @($d.Problems)) {
+        $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+        [void]$s.Children.Add((New-Text ("$($x.Name)") 14 'BadBrush' 'SemiBold'))
+        $ck = "dv.c.$($x.Code)"; $txt = T $ck; if ($txt -eq $ck) { $txt = (T 'dv.c.other') -f $x.Code }
+        [void]$s.Children.Add((New-Text $txt 12 'SubBrush'))
+        $c.Child = $s; [void]$p.Children.Add($c)
+    }
+    if (@($d.Gpu).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'dv.gpu')))
+        foreach ($g in @($d.Gpu)) {
+            $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+            [void]$s.Children.Add((New-Text $g.Name 14 'TextBrush' 'SemiBold'))
+            $age = [int]((Get-Date) - $g.Date).TotalDays
+            $br = 'SubBrush'; if ($age -gt 365) { $br = 'WarnBrush' }
+            [void]$s.Children.Add((New-Text ((T 'dv.gpu.ver') -f $g.Version, $g.Date.ToString('d', (Get-LangCulture)), $age) 12 $br))
+            $url = $null
+            if ($g.Name -match 'NVIDIA') { $url = 'https://www.nvidia.com/Download/index.aspx' } elseif ($g.Name -match 'AMD|Radeon') { $url = 'https://www.amd.com/en/support/download/drivers.html' } elseif ($g.Name -match 'Intel') { $url = 'https://www.intel.com/content/www/us/en/support/detect.html' }
+            if ($url) { $b = New-Button (T 'dv.gpu.get') 'Secondary'; $b.Tag = $url; $b.Add_Click({ Start-Process ([string]$this.Tag) }); $c.Child = (New-Row $s $b) } else { $c.Child = $s }
+            [void]$p.Children.Add($c)
+        }
+    }
+    if (@($d.Old).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'dv.old')))
+        foreach ($o in @($d.Old)) {
+            $c = New-ItemCard; $c.Padding = '16,8'; $c.Margin = '0,0,0,6'
+            $c.Child = (New-Text ("$($o.Name)  ·  $($o.Provider)  ·  $($o.Date.ToString('d', (Get-LangCulture)))") 13 'TextBrush'); [void]$p.Children.Add($c)
+        }
+        [void]$p.Children.Add((New-Text (T 'dv.old.d') 12 'SubBrush'))
+    }
+    if (@($d.Unsigned).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'dv.unsigned')))
+        [void]$p.Children.Add((New-Text ((@($d.Unsigned)) -join ' · ') 13 'WarnBrush'))
+    }
+}
+function Build-WuTab {
+    $p = $UI.DiagBody; $d = $App.Wu
+    $o = New-Button (T 'rep.wu.open') 'Secondary'; $o.Add_Click({ Start-Process 'ms-settings:windowsupdate' })
+    $r = New-Button (T 'wu.repair') 'Secondary'; $r.Add_Click({ $UI.NavRepair.IsChecked = $true })
+    $ic = Add-DiagHeader $p 'wu.t' 'wu.d' 'wu' @($o, $r)
+    [void]$p.Children.Add($ic.Card)
+    if (-not $d) { [void]$p.Children.Add((New-Text (T 'wu.notloaded') 13 'SubBrush')); return }
+    if ($d.Failed) { [void]$p.Children.Add((New-Text (T 'diag.failed') 14 'WarnBrush' 'SemiBold')); return }
+    [void]$p.Children.Add((New-GroupHeader ((T 'wu.pending') -f @($d.Pending).Count)))
+    if (@($d.Pending).Count -eq 0) { [void]$p.Children.Add((New-Text (T 'wu.nopending') 14 'GoodBrush' 'SemiBold')) }
+    foreach ($u in @($d.Pending)) { [void]$p.Children.Add((New-WuRow $u $true)) }
+    if (@($d.Hidden).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'wu.hidden')))
+        foreach ($u in @($d.Hidden)) { [void]$p.Children.Add((New-WuRow $u $false)) }
+    }
+    if (@($d.History).Count -gt 0) {
+        [void]$p.Children.Add((New-GroupHeader (T 'wu.history')))
+        foreach ($h in (@($d.History) | Select-Object -First 25)) {
+            $c = New-ItemCard; $c.Padding = '16,8'; $c.Margin = '0,0,0,6'
+            $s = [Windows.Controls.StackPanel]::new()
+            $res = @{ 1 = 'wu.r.progress'; 2 = 'wu.r.ok'; 3 = 'wu.r.okerr'; 4 = 'wu.r.fail'; 5 = 'wu.r.abort' }[$h.Result]; if (-not $res) { $res = 'wu.r.ok' }
+            $br = 'GoodBrush'; if ($h.Result -ge 4) { $br = 'BadBrush' } elseif ($h.Result -eq 3) { $br = 'WarnBrush' }
+            $head = [Windows.Controls.WrapPanel]::new(); [void]$head.Children.Add((New-Badge (T $res) $br))
+            $tt = New-Text ("  $($h.Date.ToString('d', (Get-LangCulture)))   $($h.Title)") 13 'TextBrush'; [void]$head.Children.Add($tt); [void]$s.Children.Add($head)
+            if ($h.HResult -and $h.Result -ge 3) {
+                $why = Get-CodeText ([Convert]::ToInt32($h.HResult, 16))
+                [void]$s.Children.Add((New-Text ("$($h.HResult): $why") 12 $br))
+            }
+            $c.Child = $s; [void]$p.Children.Add($c)
+        }
+    }
+}
+function New-WuRow($u, [bool]$pending) {
+    $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+    [void]$s.Children.Add((New-Text $u.Title 14 'TextBrush' 'SemiBold'))
+    $meta = @($u.KB, $u.Cat) | Where-Object { $_ }; if ($u.Size -gt 0) { $meta += Format-Size $u.Size }; if ($u.Downloaded) { $meta += (T 'wu.downloaded') }
+    [void]$s.Children.Add((New-Text ($meta -join ' · ') 12 'SubBrush'))
+    $k = 'wu.hide'; if (-not $pending) { $k = 'wu.unhide' }
+    $b = New-Button (T $k) 'Secondary'; $b.Tag = @{ Id = $u.Id; Hide = $pending; Title = $u.Title }
+    $b.Add_Click({
+        $x = $this.Tag
+        if ($x.Hide -and -not (Confirm-Box ((T 'wu.hide.confirm') -f $x.Title))) { return }
+        Start-Task 'wu.changing' 'Set-WuHidden $TK.Args.Id $TK.Args.Hide' @{ Id = $x.Id; Hide = $x.Hide } { param($TK); Start-DiagLoad 'wu' }
+    })
+    $c.Child = (New-Row $s $b)
+    return $c
+}
+
+# ---------- Απεγκατάσταση (καρτέλα στις Εφαρμογές) ----------
+function Build-UninstallTab {
+    $p = $UI.AppsBody
+    if ($App.UnLeft) {
+        $lc = New-Card; $ls = [Windows.Controls.StackPanel]::new()
+        [void]$ls.Children.Add((New-Text ((T 'un.left.t') -f $App.UnLeft.Name) 16 'TextBrush' 'SemiBold'))
+        if (@($App.UnLeft.Items).Count -eq 0) { [void]$ls.Children.Add((New-Text (T 'un.left.none') 13 'GoodBrush')) }
+        foreach ($it in @($App.UnLeft.Items)) {
+            $g = [Windows.Controls.Grid]::new(); $g.Margin = '0,8,0,0'
+            foreach ($w in @('Auto', '*')) { $cd = [Windows.Controls.ColumnDefinition]::new(); $cd.Width = $w; [void]$g.ColumnDefinitions.Add($cd) }
+            $chk = [Windows.Controls.CheckBox]::new(); $chk.Style = $Win.FindResource('Check'); $chk.Margin = '0,0,14,0'; $chk.Tag = $it.Path
+            if ($null -eq $App.UnLeftSel[$it.Path]) { $App.UnLeftSel[$it.Path] = [bool]$it.Sure }
+            $chk.IsChecked = [bool]$App.UnLeftSel[$it.Path]
+            $chk.Add_Click({ $App.UnLeftSel[[string]$this.Tag] = [bool]$this.IsChecked })
+            $s = [Windows.Controls.StackPanel]::new()
+            $sz = ''; if ($it.Size -gt 0) { $sz = '   ' + (Format-Size $it.Size) }
+            [void]$s.Children.Add((New-Text ("$($it.Path)$sz") 13 'TextBrush'))
+            $nk = 'un.left.check'; if ($it.Sure) { $nk = 'un.left.sure' }
+            [void]$s.Children.Add((New-Text (T $nk) 11 'SubBrush'))
+            [Windows.Controls.Grid]::SetColumn($s, 1); [void]$g.Children.Add($chk); [void]$g.Children.Add($s); [void]$ls.Children.Add($g)
+        }
+        $bw = [Windows.Controls.WrapPanel]::new(); $bw.Margin = '0,12,0,0'
+        if (@($App.UnLeft.Items).Count -gt 0) {
+            $b = New-Button (T 'un.left.remove') 'Primary'; $b.Margin = '0,0,10,0'
+            $b.Add_Click({
+                $sel = @($App.UnLeft.Items | Where-Object { $_ -and $App.UnLeftSel["$($_.Path)"] })
+                if ($sel.Count -eq 0) { Show-Info (T 'lo.none.sel'); return }
+                if (-not (Confirm-Box ((T 'un.left.confirm') -f $sel.Count))) { return }
+                Start-Task 'un.left.removing' 'Remove-AppLeftovers $TK.Args.Items' @{ Items = $sel } { param($TK); if ($TK.Result) { Set-AppsMsg ((T 'un.left.result') -f $TK.Result.Ok) }; $App.UnLeft = $null; Build-AppsBody }
+            }); [void]$bw.Children.Add($b)
+        }
+        $x = New-Button (T 'un.left.skip') 'Secondary'; $x.Add_Click({ $App.UnLeft = $null; Build-AppsBody }); [void]$bw.Children.Add($x)
+        [void]$ls.Children.Add($bw); $lc.Child = $ls; [void]$p.Children.Add($lc)
+    }
+    $ic = New-InfoCard '' (T 'un.intro')
+    $row = [Windows.Controls.WrapPanel]::new(); $row.Margin = '0,12,0,0'
+    if (-not $App.UnBox) { $App.UnBox = New-TextBox '' 260; $App.UnBox.Add_TextChanged({ Build-UninstallRows }) }
+    Add-Detached $row $App.UnBox
+    foreach ($so in 'name', 'size', 'date') {
+        $rb = New-Pill (T "un.sort.$so") $so 'unsort' ($so -eq $App.UnSort)
+        $rb.Add_Checked({ $App.UnSort = [string]$this.Tag; Build-UninstallRows })
+        [void]$row.Children.Add($rb)
+    }
+    [void]$ic.Panel.Children.Add($row); [void]$p.Children.Add($ic.Card)
+    if (-not $App.UnRows) { $App.UnRows = [Windows.Controls.StackPanel]::new() }
+    Add-Detached $p $App.UnRows
+    if ($null -eq $App.Programs) {
+        $App.UnRows.Children.Clear(); [void]$App.UnRows.Children.Add((New-Text (T 'un.loading') 14 'SubBrush'))
+        if (-not $App.Busy) { Start-Task 'un.loading' 'Get-InstalledPrograms' @{} { param($TK); $App.Programs = ConvertTo-CleanList $TK.Result; if ($App.AppsTab -eq 'uninstall') { Build-UninstallRows } } -Silent }
+        return
+    }
+    Build-UninstallRows
+}
+function Build-UninstallRows {
+    if (-not $App.UnRows -or $null -eq $App.Programs) { return }
+    $App.UnRows.Children.Clear()
+    $q = "$($App.UnBox.Text)".Trim()
+    $list = @($App.Programs | Where-Object { $_ -and (-not $q -or $_.Name -like "*$q*" -or $_.Publisher -like "*$q*") })
+    switch ($App.UnSort) { 'size' { $list = @($list | Sort-Object Size -Descending) } 'date' { $list = @($list | Sort-Object { if ($_.Date) { $_.Date } else { [datetime]::MinValue } } -Descending) } default { $list = @($list | Sort-Object Name) } }
+    [void]$App.UnRows.Children.Add((New-GroupHeader ((T 'un.count') -f $list.Count)))
+    foreach ($a in ($list | Select-Object -First 150)) {
+        $c = New-ItemCard; $c.Padding = '16,10'; $c.Margin = '0,0,0,6'
+        $s = [Windows.Controls.StackPanel]::new()
+        [void]$s.Children.Add((New-Text $a.Name 14 'TextBrush' 'SemiBold'))
+        $meta = @($a.Publisher, $a.Version) | Where-Object { $_ }
+        if ($a.Size -gt 0) { $meta += Format-Size $a.Size }; if ($a.Date) { $meta += $a.Date.ToString('d', (Get-LangCulture)) }
+        [void]$s.Children.Add((New-Text ($meta -join ' · ') 12 'SubBrush'))
+        $b = New-Button (T 'un.btn') 'Secondary'; $b.Tag = $a
+        $b.Add_Click({
+            $x = $this.Tag
+            if (-not (Confirm-Box ((T 'un.confirm') -f $x.Name))) { return }
+            Start-Task 'un.running' 'Invoke-UninstallCore $TK.Args.App' @{ App = $x } {
+                param($TK); $r = $TK.Result
+                if ($r) { $App.UnLeft = @{ Name = $TK.Args.App.Name; Items = (ConvertTo-CleanList $r.Leftovers) }; $App.UnLeftSel = @{} }
+                $App.Programs = $null; Build-AppsBody
+            }
+        })
+        $c.Child = (New-Row $s $b); [void]$App.UnRows.Children.Add($c)
+    }
+}
+
+# ---------- Διπλά αρχεία (καρτέλα στον Καθαρισμό) ----------
+function Build-DupeList {
+    $p = $UI.DupeBody; $p.Children.Clear()
+    $ic = New-InfoCard '' (T 'du.intro')
+    $wp = [Windows.Controls.WrapPanel]::new(); $wp.Margin = '0,12,0,4'
+    $locs = [System.Collections.ArrayList]::new()
+    [void]$locs.Add(@('user', (T 'bf.loc.user'))); [void]$locs.Add(@('downloads', (T 'bf.loc.downloads')))
+    foreach ($dv in @(Get-FixedDrives)) { [void]$locs.Add(@($dv.Root, ((T 'bf.loc.drive') -f $dv.Letter, (Format-Size $dv.Free)))) }
+    [void]$locs.Add(@('pick', (T 'bf.loc.pick')))
+    foreach ($l in $locs) { $rb = New-Pill $l[1] $l[0] 'duploc' ($l[0] -eq $App.DupLoc); $rb.Add_Checked({ $App.DupLoc = [string]$this.Tag }); [void]$wp.Children.Add($rb) }
+    [void]$ic.Panel.Children.Add($wp)
+    $mp = [Windows.Controls.WrapPanel]::new()
+    foreach ($m in @(@('1', '1 MB'), @('10', '10 MB'), @('100', '100 MB'))) { $rb = New-Pill ((T 'du.min') -f $m[1]) $m[0] 'dupmin' ($m[0] -eq $App.DupMin); $rb.Add_Checked({ $App.DupMin = [string]$this.Tag }); [void]$mp.Children.Add($rb) }
+    [void]$ic.Panel.Children.Add($mp)
+    $bw = [Windows.Controls.WrapPanel]::new(); $bw.Margin = '0,8,0,0'
+    $b = New-Button (T 'du.scan') 'Primary'; $b.Margin = '0,0,10,8'
+    $b.Add_Click({
+        $root = switch ($App.DupLoc) { 'user' { $env:USERPROFILE } 'downloads' { Join-Path $env:USERPROFILE 'Downloads' } 'pick' { Select-Folder } default { $App.DupLoc } }
+        if (-not $root) { return }
+        Start-Task 'du.scanning' 'Find-DuplicatesCore $TK.Args.Root $TK.Args.Min' @{ Root = $root; Min = ([double]$App.DupMin * 1MB) } {
+            param($TK); $App.DupSel = @{}
+            if (-not $TK.Result) { $App.Dupes = $null; Show-Info (T 'diag.failed'); Build-DupeList; return }
+            $App.Dupes = $TK.Result; $App.Dupes.Groups = ConvertTo-CleanList $App.Dupes.Groups
+            foreach ($g in $App.Dupes.Groups) { $i = 0; foreach ($f in (ConvertTo-CleanList $g.Files)) { $App.DupSel["$($f.Path)"] = ($i -gt 0); $i++ } }
+            Build-DupeList
+        }
+    }); [void]$bw.Children.Add($b)
+    if ($App.Dupes -and @($App.Dupes.Groups).Count -gt 0) {
+        $sel = @($App.DupSel.Keys | Where-Object { $App.DupSel[$_] })
+        $size = 0.0; foreach ($g in @($App.Dupes.Groups)) { foreach ($f in @($g.Files)) { if ($App.DupSel[$f.Path]) { $size += $g.Size } } }
+        $r = New-Button ((T 'du.recycle') -f $sel.Count, (Format-Size $size)) 'Secondary'; $r.Margin = '0,0,10,8'
+        $r.Add_Click({
+            $sel = @($App.DupSel.Keys | Where-Object { $App.DupSel[$_] })
+            if ($sel.Count -eq 0) { Show-Info (T 'lo.none.sel'); return }
+            # ασφάλεια: ποτέ όλα τα αντίγραφα μιας ομάδας
+            foreach ($g in @($App.Dupes.Groups)) { if (@($g.Files | Where-Object { -not $App.DupSel[$_.Path] }).Count -eq 0) { Show-Info (T 'du.keepone'); return } }
+            if (-not (Confirm-Box ((T 'du.confirm') -f $sel.Count))) { return }
+            Add-Type -AssemblyName Microsoft.VisualBasic
+            $ok = 0
+            foreach ($f in $sel) { try { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($f, 'OnlyErrorDialogs', 'SendToRecycleBin'); $ok++; $App.DupSel.Remove($f) } catch {} }
+            Write-AppLog "Duplicates to Recycle Bin: $ok"
+            foreach ($g in @($App.Dupes.Groups)) { $g.Files = @($g.Files | Where-Object { Test-Path -LiteralPath $_.Path }) }
+            $App.Dupes.Groups = @($App.Dupes.Groups | Where-Object { @($_.Files).Count -gt 1 })
+            Show-Info ((T 'du.recycled') -f $ok); Build-DupeList
+        }); [void]$bw.Children.Add($r)
+    }
+    [void]$ic.Panel.Children.Add($bw); [void]$p.Children.Add($ic.Card)
+    if (-not $App.Dupes) { return }
+    if (@($App.Dupes.Groups).Count -eq 0) { [void]$p.Children.Add((New-Text (T 'du.none') 15 'GoodBrush' 'SemiBold')); return }
+    [void]$p.Children.Add((New-GroupHeader ((T 'du.result') -f $App.Dupes.Total, (Format-Size $App.Dupes.Wasted))))
+    foreach ($g in @($App.Dupes.Groups)) {
+        $c = New-ItemCard; $s = [Windows.Controls.StackPanel]::new()
+        [void]$s.Children.Add((New-Text ((T 'du.group') -f $g.Count, (Format-Size $g.Size), (Format-Size $g.Wasted)) 14 'TextBrush' 'SemiBold'))
+        $i = 0
+        foreach ($f in @($g.Files)) {
+            $row = [Windows.Controls.Grid]::new(); $row.Margin = '0,6,0,0'
+            foreach ($w in @('Auto', '*', 'Auto')) { $cd = [Windows.Controls.ColumnDefinition]::new(); $cd.Width = $w; [void]$row.ColumnDefinitions.Add($cd) }
+            $chk = [Windows.Controls.CheckBox]::new(); $chk.Style = $Win.FindResource('Check'); $chk.Margin = '0,0,12,0'; $chk.Tag = $f.Path
+            $chk.IsChecked = [bool]$App.DupSel[$f.Path]; $chk.ToolTip = T 'du.tick'
+            $chk.Add_Click({ $App.DupSel[[string]$this.Tag] = [bool]$this.IsChecked; Build-DupeList })
+            $tx = [Windows.Controls.StackPanel]::new()
+            [void]$tx.Children.Add((New-Text $f.Path 12 'TextBrush'))
+            $note = $f.Date.ToString('g', (Get-LangCulture)); if ($i -eq 0) { $note += '  · ' + (T 'du.oldest') }
+            [void]$tx.Children.Add((New-Text $note 11 'SubBrush'))
+            $o = New-Button (T 'bf.open') 'Secondary'; $o.Tag = $f.Path; $o.Margin = '8,0,0,0'
+            $o.Add_Click({ Start-Process explorer.exe -ArgumentList "/select,`"$([string]$this.Tag)`"" })
+            [Windows.Controls.Grid]::SetColumn($tx, 1); [Windows.Controls.Grid]::SetColumn($o, 2)
+            [void]$row.Children.Add($chk); [void]$row.Children.Add($tx); [void]$row.Children.Add($o)
+            [void]$s.Children.Add($row); $i++
+        }
+        $c.Child = $s; [void]$p.Children.Add($c)
+    }
+}
+
 # ---------- Επιδιόρθωση ----------
 function Add-ActionCard($panel, [string]$tKey, [string]$dKey, [string]$aKey, $buttons) {
     $card = New-Card; $sp = [Windows.Controls.StackPanel]::new()
@@ -1226,7 +1732,7 @@ function Set-AllTexts {
     $os = $App.Os
     $UI.TxtOs.Text = "$($os.Name) $($os.Version)".Trim()
     $UI.TxtVersion.Text = "v$AppVersion · $(T 'app.for')"
-    $nav = @{ NavHome = 'nav.home'; NavClean = 'nav.clean'; NavTweaks = 'nav.tweaks'; NavApps = 'nav.apps'; NavNet = 'nav.net'; NavSecurity = 'nav.security'; NavRepair = 'nav.repair'; NavTools = 'nav.tools'; NavSettings = 'nav.settings' }
+    $nav = @{ NavHome = 'nav.home'; NavClean = 'nav.clean'; NavTweaks = 'nav.tweaks'; NavApps = 'nav.apps'; NavNet = 'nav.net'; NavSecurity = 'nav.security'; NavDiag = 'nav.diag'; NavDev = 'nav.dev'; NavRepair = 'nav.repair'; NavTools = 'nav.tools'; NavSettings = 'nav.settings' }
     foreach ($k in $nav.Keys) { $UI[$k].Content = T $nav[$k] }
     $txt = @{
         TxtRestart = 'restart.banner'; GDiskT = 'home.disk'; GRamT = 'home.ram'; GCpuT = 'home.cpu'; InfVpnT = 'home.vpn'; InfUpT = 'home.uptime'
@@ -1244,7 +1750,7 @@ function Set-AllTexts {
     foreach ($k in $btn.Keys) { $UI[$k].Content = T $btn[$k] }
     if ($UI.LogList.Visibility -eq 'Visible') { $UI.BtnLog.Content = T 'log.hide' } else { $UI.BtnLog.Content = T 'log.show' }
     Update-AgeLabel
-    Build-CleanList; Build-TweakList; Build-RepairList; Build-ToolsList; Build-SettingsPage; Build-SpecGrid; Build-AppsPage; Build-SecurityPage; Build-NetPage; Build-CleanTabs; Build-NeonSign
+    Build-CleanList; Build-TweakList; Build-RepairList; Build-ToolsList; Build-SettingsPage; Build-SpecGrid; Build-AppsPage; Build-SecurityPage; Build-NetPage; Build-CleanTabs; Build-NeonSign; Build-DevPage; Build-DiagPage
     if ($App.SpecsLang -and $App.SpecsLang -ne $script:LangCode -and -not $App.Busy) { $App.SpecsLang = $script:LangCode; Start-SpecsScan }
     if (-not $App.Busy) { Set-Ready }
     Show-Page $App.Page
@@ -1280,6 +1786,8 @@ function Open-MainWindow([string]$xaml) {
     $UI.NavApps.Add_Checked({ Show-Page 'Apps' })
     $UI.NavSecurity.Add_Checked({ Show-Page 'Security' })
     $UI.NavNet.Add_Checked({ Show-Page 'Net' })
+    $UI.NavDiag.Add_Checked({ Show-Page 'Diag' })
+    $UI.NavDev.Add_Checked({ Show-Page 'Dev' })
     $UI.NavRepair.Add_Checked({ Show-Page 'Repair' })
     $UI.NavTools.Add_Checked({ Show-Page 'Tools' })
     $UI.NavSettings.Add_Checked({ Show-Page 'Settings' })

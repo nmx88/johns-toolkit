@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.5.0
+- New **Developer** page: **PATH cleaner** (missing/duplicate/empty entries, which python runs first, backup and restore), **port finder** (who holds port 5432/8080..., with services and end-process), **DNS switcher** (Cloudflare, Quad9, Google, AdGuard, Mullvad, automatic) with speed measurement and a VPN warning.
+- New **Diagnostics** page: **crash history** (blue screens with plain explanations, unexpected shutdowns, crashing programs with GPU-driver detection), **devices & drivers** (error codes explained, graphics driver age with vendor links, old and unsigned drivers), **Windows Update** (pending, hidden, history with 13 explained error codes, hide/unhide).
+- **Apps › Uninstall**: installed programs with search and sorting; after uninstalling, leftovers are found (only the install folder is pre-ticked; registry keys are backed up).
+- **Cleanup › Duplicates**: identical files by content (SHA-256), oldest copy always kept, code folders skipped, never all copies of a file.
+- Fixes found by the automated tests: Duplicates page crash after a failed scan; Diagnostics could retry a failed load forever; leftover names like "Notepad++ (64-bit x64)".
+
+## v2.4.1
+- Fix: the "Remove apps" tab stayed empty the first time it was opened, after removing apps, and when no unneeded apps were left.
+- Fix: every list returned by a background task is now cleaned the same way (no empty "ghost" items).
+- Speed test sends a User-Agent header.
+- New automated test: every button, switch and tab on every page is clicked with safe stand-ins.
+
 ## v2.4.0
 - **Neon sign 2.0**: real neon-tube letters (outlined glyphs with glowing gas inside and an outer halo), power-on sequence when the app opens, a half-broken letter, a periodic "buzz" and a small flickering "OPEN" sign. Fix: it did not flicker when "Fewer visual effects" was on.
 - **Internet speed test** (download, upload, ping, jitter) with server location and history.

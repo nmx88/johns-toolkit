@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.4.0'
+$AppVersion = '2.5.0'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
@@ -1075,6 +1075,7 @@ function Invoke-SpeedTest {
     Add-Type -AssemblyName System.Net.Http
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $h = [System.Net.Http.HttpClient]::new(); $h.Timeout = [TimeSpan]::FromSeconds(60)
+    try { $h.DefaultRequestHeaders.UserAgent.ParseAdd("JohnsToolkit/$AppVersion") } catch {}
     $base = 'https://speed.cloudflare.com'
     $where = ''
     try { $trace = $h.GetStringAsync("$base/cdn-cgi/trace").GetAwaiter().GetResult(); if ($trace -match 'colo=(\w+)') { $where = $matches[1] } } catch {}
@@ -1233,4 +1234,367 @@ function Get-BootTimes {
         }
     } catch {}
     return $out
+}
+
+# ======================================================================
+#  v2.5: PATH, ΘΥΡΕΣ, DNS, ΑΠΕΓΚΑΤΑΣΤΑΣΗ, ΚΡΑΣΑΡΙΣΜΑΤΑ, ΣΥΣΚΕΥΕΣ, WINDOWS UPDATE, ΔΙΠΛΑ ΑΡΧΕΙΑ
+# ======================================================================
+
+# ---------- PATH ----------
+$PathKeys = @{ Machine = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'; User = 'HKCU:\Environment' }
+function Get-RawPath([string]$scope) {
+    try { return [string](Get-Item -LiteralPath $PathKeys[$scope] -ErrorAction Stop).GetValue('Path', '', 'DoNotExpandEnvironmentNames') } catch { return '' }
+}
+function Get-PathReport {
+    $seen = @{}; $out = @{}
+    foreach ($scope in 'Machine', 'User') {
+        $list = @(); $i = 0
+        foreach ($raw in ((Get-RawPath $scope) -split ';')) {
+            $exp = [Environment]::ExpandEnvironmentVariables($raw).Trim().TrimEnd('\')
+            $key = $exp.ToLowerInvariant()
+            $state = 'ok'
+            if (-not $raw.Trim()) { $state = 'empty' }
+            elseif ($seen.ContainsKey($key)) { $state = 'dup' }
+            elseif (-not (Test-Path -LiteralPath $exp)) { $state = 'missing' }
+            if ($raw.Trim() -and -not $seen.ContainsKey($key)) { $seen[$key] = "$scope" }
+            $py = ''
+            if ($state -eq 'ok' -and (Test-Path -LiteralPath (Join-Path $exp 'python.exe'))) {
+                $py = 'python'
+                if ($exp -match 'WindowsApps') { $py = 'store-alias' }
+                elseif ($exp -match 'Python(\d)(\d+)') { $py = "Python $($matches[1]).$($matches[2])" }
+            }
+            $list += [pscustomobject]@{ Scope = $scope; Index = $i; Raw = $raw; Expanded = $exp; State = $state; Python = $py }
+            $i++
+        }
+        $out[$scope] = $list
+    }
+    # ποιο python τρέχει πρώτο (τα Windows ψάχνουν πρώτα στο Machine και μετά στο User PATH)
+    $first = @($out.Machine + $out.User | Where-Object { $_.Python }) | Select-Object -First 1
+    $out.FirstPython = $first
+    return $out
+}
+function Update-EnvBroadcast {
+    try {
+        if (-not ('JTEnv' -as [type])) {
+            Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class JTEnv { [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult); }'
+        }
+        $r = [UIntPtr]::Zero
+        [void][JTEnv]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 3000, [ref]$r)
+    } catch {}
+}
+function Set-CleanPath([string]$scope, [int[]]$removeIdx) {
+    $raw = Get-RawPath $scope
+    New-Item -ItemType Directory -Path $CoreData -Force | Out-Null
+    $bk = Join-Path $CoreData ('path-backup-{0}-{1}.txt' -f $scope.ToLower(), (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'))
+    [IO.File]::WriteAllText($bk, $raw, (New-Object System.Text.UTF8Encoding $false))
+    $parts = $raw -split ';'
+    $keep = for ($i = 0; $i -lt $parts.Count; $i++) { if ($removeIdx -notcontains $i -and $parts[$i].Trim()) { $parts[$i] } }
+    $new = ($keep -join ';')
+    $k = Get-Item -LiteralPath $PathKeys[$scope]
+    $hive = if ($scope -eq 'Machine') { [Microsoft.Win32.Registry]::LocalMachine } else { [Microsoft.Win32.Registry]::CurrentUser }
+    $sub = if ($scope -eq 'Machine') { 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment' } else { 'Environment' }
+    $rk = $hive.OpenSubKey($sub, $true)
+    $rk.SetValue('Path', $new, [Microsoft.Win32.RegistryValueKind]::ExpandString); $rk.Close()
+    Update-EnvBroadcast
+    Write-AppLog "PATH ($scope) cleaned: removed $($removeIdx.Count) entries, backup $bk"
+    return $bk
+}
+function Get-PathBackups { return @(Get-ChildItem -Path (Join-Path $CoreData 'path-backup-*.txt') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 6) }
+function Restore-PathBackup([string]$file) {
+    $scope = 'User'; if ((Split-Path $file -Leaf) -like 'path-backup-machine-*') { $scope = 'Machine' }
+    $val = [IO.File]::ReadAllText($file, [Text.Encoding]::UTF8)
+    $hive = if ($scope -eq 'Machine') { [Microsoft.Win32.Registry]::LocalMachine } else { [Microsoft.Win32.Registry]::CurrentUser }
+    $sub = if ($scope -eq 'Machine') { 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment' } else { 'Environment' }
+    $rk = $hive.OpenSubKey($sub, $true); $rk.SetValue('Path', $val, [Microsoft.Win32.RegistryValueKind]::ExpandString); $rk.Close()
+    Update-EnvBroadcast
+    Write-AppLog "PATH ($scope) restored from $file"
+    return $scope
+}
+
+# ---------- Ποιος πιάνει τη θύρα ----------
+function Find-PortUsers([int]$port) {
+    $rows = @()
+    foreach ($c in @(Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue)) { $rows += [pscustomobject]@{ Proto = 'TCP'; State = "$($c.State)"; Local = "$($c.LocalAddress):$($c.LocalPort)"; Remote = "$($c.RemoteAddress):$($c.RemotePort)"; PID = [int]$c.OwningProcess } }
+    foreach ($u in @(Get-NetUDPEndpoint -LocalPort $port -ErrorAction SilentlyContinue)) { $rows += [pscustomobject]@{ Proto = 'UDP'; State = ''; Local = "$($u.LocalAddress):$($u.LocalPort)"; Remote = ''; PID = [int]$u.OwningProcess } }
+    $out = @()
+    foreach ($g in ($rows | Group-Object PID)) {
+        $procId = [int]$g.Name
+        $p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+        $svc = @(Get-CimInstance Win32_Service -Filter "ProcessId=$procId" -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name)" })
+        $path = ''; try { $path = "$($p.Path)" } catch {}
+        $out += [pscustomobject]@{ PID = $procId; Name = $(if ($p) { $p.ProcessName } elseif ($procId -eq 4) { 'System' } else { "PID $procId" }); Path = $path; Services = $svc
+                                   States = ((@($g.Group | ForEach-Object { "$($_.Proto) $($_.State)".Trim() }) | Select-Object -Unique) -join ', '); Lines = @($g.Group | Select-Object -First 6) }
+    }
+    return $out
+}
+
+# ---------- DNS ----------
+$DnsPresets = [ordered]@{
+    auto = @(); cloudflare = @('1.1.1.1', '1.0.0.1', '2606:4700:4700::1111', '2606:4700:4700::1001'); quad9 = @('9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9')
+    google = @('8.8.8.8', '8.8.4.4', '2001:4860:4860::8888', '2001:4860:4860::8844'); adguard = @('94.140.14.14', '94.140.15.15', '2a10:50c0::ad1:ff', '2a10:50c0::ad2:ff'); mullvad = @('194.242.2.2', '2a07:e340::2')
+}
+function Get-DnsAdapters { return @(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object { "$($_.Status)" -eq 'Up' }) }
+function Get-DnsStatus {
+    $out = @()
+    foreach ($a in Get-DnsAdapters) {
+        $srv = @(Get-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ErrorAction SilentlyContinue | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ })
+        $preset = 'custom'
+        foreach ($k in $DnsPresets.Keys) { if ($k -ne 'auto' -and $srv.Count -gt 0 -and $DnsPresets[$k] -contains $srv[0]) { $preset = $k } }
+        $dhcp = $false; try { $dhcp = [bool]((Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\$($a.InterfaceGuid)" -ErrorAction Stop).NameServer -eq '') } catch {}
+        if ($dhcp -and $preset -eq 'custom') { $preset = 'auto' }
+        $out += [pscustomobject]@{ Name = "$($a.Name)"; Desc = "$($a.InterfaceDescription)"; Servers = ($srv -join ', '); Preset = $preset }
+    }
+    return $out
+}
+function Set-DnsPreset([string]$preset) {
+    $n = 0
+    foreach ($a in Get-DnsAdapters) {
+        if ($preset -eq 'auto') { Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }
+        else { Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ServerAddresses $DnsPresets[$preset] -ErrorAction SilentlyContinue }
+        $n++
+    }
+    Clear-DnsClientCache -ErrorAction SilentlyContinue
+    Write-AppLog "DNS -> $preset ($n adapters)"
+    return $n
+}
+function Measure-DnsPresets {
+    $res = [ordered]@{}; $names = @('www.google.com', 'www.wikipedia.org', 'github.com', 'www.microsoft.com')
+    $keys = @($DnsPresets.Keys | Where-Object { $_ -ne 'auto' }); $i = 0
+    foreach ($k in $keys) {
+        $i++; Set-TK (100.0 * $i / $keys.Count) (T 'dns.measuring') $k
+        $times = @()
+        foreach ($n in $names) {
+            $sw = [Diagnostics.Stopwatch]::StartNew()
+            try { $null = Resolve-DnsName -Name $n -Server $DnsPresets[$k][0] -DnsOnly -NoHostsFile -QuickTimeout -ErrorAction Stop; $sw.Stop(); $times += $sw.Elapsed.TotalMilliseconds } catch {}
+        }
+        if ($times.Count -gt 0) { $res[$k] = [math]::Round((@($times | Sort-Object) | Select-Object -First ([math]::Max(1, $times.Count - 1)) | Measure-Object -Average).Average) } else { $res[$k] = -1 }
+    }
+    return $res
+}
+
+# ---------- Απεγκατάσταση προγραμμάτων ----------
+function Get-InstalledPrograms {
+    $out = @{}
+    $keys = @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall')
+    foreach ($k in $keys) {
+        foreach ($s in @(Get-ChildItem -Path $k -ErrorAction SilentlyContinue)) {
+            $p = Get-ItemProperty -LiteralPath $s.PSPath -ErrorAction SilentlyContinue
+            if (-not $p -or -not $p.DisplayName -or -not $p.UninstallString) { continue }
+            if ("$($p.SystemComponent)" -eq '1' -or $p.ParentKeyName -or "$($p.ReleaseType)" -match 'Update|Hotfix') { continue }
+            $id = "$($p.DisplayName)|$($p.DisplayVersion)"
+            if ($out.ContainsKey($id)) { continue }
+            $date = $null; if ("$($p.InstallDate)" -match '^(\d{4})(\d{2})(\d{2})$') { try { $date = [datetime]::new([int]$matches[1], [int]$matches[2], [int]$matches[3]) } catch {} }
+            $size = 0.0; if ($p.EstimatedSize) { $size = [double]$p.EstimatedSize * 1KB }
+            $out[$id] = [pscustomobject]@{ Name = "$($p.DisplayName)"; Publisher = "$($p.Publisher)"; Version = "$($p.DisplayVersion)"; Date = $date; Size = $size
+                                          Uninstall = "$($p.UninstallString)"; Quiet = "$($p.QuietUninstallString)"; Location = "$($p.InstallLocation)".Trim('"').TrimEnd('\'); Key = "$($s.PSPath)" }
+        }
+    }
+    return @($out.Values | Sort-Object Name)
+}
+function Split-CommandLine([string]$cmd) {
+    $cmd = $cmd.Trim()
+    if ($cmd.StartsWith('"')) { $e = $cmd.IndexOf('"', 1); if ($e -gt 0) { return @($cmd.Substring(1, $e - 1), $cmd.Substring($e + 1).Trim()) } }
+    $m = [regex]::Match($cmd, '^(.+?\.exe)\b(.*)$', 'IgnoreCase')
+    if ($m.Success) { return @($m.Groups[1].Value.Trim(), $m.Groups[2].Value.Trim()) }
+    return @($cmd, '')
+}
+function Invoke-UninstallCore($app) {
+    Set-TK -1 ((T 'un.running1') -f $app.Name) ''
+    $cmd = $app.Uninstall
+    if ($cmd -match 'msiexec' -and $cmd -match '(\{[0-9A-Fa-f\-]{36}\})') { $exe = "$env:WINDIR\System32\msiexec.exe"; $arg = "/x $($matches[1])" }
+    else { $parts = Split-CommandLine $cmd; $exe = $parts[0]; $arg = $parts[1] }
+    $code = -1
+    try {
+        if ($arg) { $pr = Start-Process -FilePath $exe -ArgumentList $arg -PassThru -ErrorAction Stop } else { $pr = Start-Process -FilePath $exe -PassThru -ErrorAction Stop }
+        $pr.WaitForExit(); $code = $pr.ExitCode
+        # πολλά uninstallers ξεκινούν ένα αντίγραφο του εαυτού τους και κλείνουν αμέσως: περιμένουμε λίγο ακόμα
+        Start-Sleep -Seconds 3
+        $t = 0; while ($t -lt 120 -and (Get-Process -Name 'Au_', 'Un_A', 'unins*', 'uninstall*' -ErrorAction SilentlyContinue)) { Start-Sleep -Seconds 2; $t += 2 }
+    } catch { Add-TKLog ((T 'un.fail') -f $app.Name) 'warn'; return @{ Code = -1; Gone = $false; Leftovers = @() } }
+    $gone = -not (Test-Path -LiteralPath ($app.Key -replace '^Microsoft\.PowerShell\.Core\\Registry::', 'Registry::'))
+    Write-AppLog "Uninstall $($app.Name): code=$code gone=$gone"
+    $left = @(Find-AppLeftovers $app)
+    Set-TK 100 ((T 'un.done1') -f $app.Name) ''
+    return @{ Code = $code; Gone = $gone; Leftovers = $left }
+}
+function Get-FolderSize([string]$p) { $s = 0.0; foreach ($f in @(Get-ChildItem -LiteralPath $p -Recurse -File -Force -ErrorAction SilentlyContinue)) { $s += $f.Length }; return $s }
+function Find-AppLeftovers($app) {
+    $out = @()
+    # "Notepad++ (64-bit x64)" -> "Notepad++", "Python 3.12.7 (64-bit)" -> "Python": αφαιρούμε παρενθέσεις, αρχιτεκτονική και έκδοση
+    $base = "$($app.Name)"
+    for ($k = 0; $k -lt 3; $k++) { $base = ($base -replace '\s*\([^)]*\)\s*$', '' -replace '\s+(x64|x86|64-bit|32-bit|amd64)$', '' -replace '\s+v?\d+(\.\d+)*$', '').Trim() }
+    $names = @($base, "$($app.Name)".Trim()) | Where-Object { $_ -and $_.Length -ge 3 } | Select-Object -Unique
+    $pub = ("$($app.Publisher)" -replace ',?\s*(Inc|LLC|Ltd|GmbH|Corp(oration)?|Co\.?)\.?$', '').Trim()
+    # 1) ο φάκελος εγκατάστασης: σίγουρα του προγράμματος
+    if ($app.Location -and (Test-Path -LiteralPath $app.Location) -and $app.Location -notmatch '^[A-Z]:\\?$|\\Windows$|\\Program Files( \(x86\))?$') {
+        $out += [pscustomobject]@{ Type = 'dir'; Path = $app.Location; Size = (Get-FolderSize $app.Location); Sure = $true }
+    }
+    # 2) φάκελοι δεδομένων με ΑΚΡΙΒΩΣ το όνομα του προγράμματος (ή Εκδότης\Πρόγραμμα)
+    $roots = @($env:APPDATA, $env:LOCALAPPDATA, $env:ProgramData, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ }
+    foreach ($r in $roots) {
+        foreach ($n in $names) {
+            foreach ($cand in @((Join-Path $r $n), $(if ($pub) { Join-Path (Join-Path $r $pub) $n }))) {
+                if ($cand -and (Test-Path -LiteralPath $cand) -and @($out | Where-Object { $_.Path -eq $cand }).Count -eq 0) {
+                    $out += [pscustomobject]@{ Type = 'dir'; Path = $cand; Size = (Get-FolderSize $cand); Sure = $false }
+                }
+            }
+        }
+    }
+    # 3) κλειδιά μητρώου Software\Εκδότης\Πρόγραμμα ή Software\Πρόγραμμα
+    foreach ($h in 'HKCU:\Software', 'HKLM:\SOFTWARE') {
+        foreach ($n in $names) {
+            foreach ($cand in @((Join-Path $h $n), $(if ($pub) { Join-Path (Join-Path $h $pub) $n }))) {
+                if ($cand -and (Test-Path -LiteralPath $cand)) { $out += [pscustomobject]@{ Type = 'reg'; Path = $cand; Size = 0; Sure = $false } }
+            }
+        }
+    }
+    return $out
+}
+function Remove-AppLeftovers($items) {
+    $items = @($items); $ok = 0; $fail = 0
+    $bdir = Join-Path $CoreData ('backup\uninstall-{0}' -f (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'))
+    Add-Type -AssemblyName Microsoft.VisualBasic
+    foreach ($x in $items) {
+        try {
+            if ($x.Type -eq 'dir') { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($x.Path, 'OnlyErrorDialogs', 'SendToRecycleBin') }
+            else {
+                New-Item -ItemType Directory -Path $bdir -Force | Out-Null
+                $native = $x.Path -replace '^HKCU:', 'HKEY_CURRENT_USER' -replace '^HKLM:', 'HKEY_LOCAL_MACHINE'
+                & reg.exe export $native (Join-Path $bdir ('{0}.reg' -f ([guid]::NewGuid().ToString('N')))) /y 2>&1 | Out-Null
+                Remove-Item -LiteralPath $x.Path -Recurse -Force -ErrorAction Stop
+            }
+            $ok++; Add-TKLog ((T 'un.left.ok') -f $x.Path) 'ok'
+        } catch { $fail++; Add-TKLog ((T 'un.left.fail') -f $x.Path) 'warn' }
+    }
+    Write-AppLog "Uninstall leftovers removed: $ok (fail $fail)"
+    return @{ Ok = $ok; Fail = $fail }
+}
+
+# ---------- Ιστορικό κρασαρισμάτων ----------
+$BugChecks = @{ '0000007E' = 'driver'; '1000007E' = 'driver'; '000000D1' = 'driver'; '0000009F' = 'power'; '00000133' = 'dpc'; '00000124' = 'whea'; '0000001A' = 'memory'; '00000050' = 'memory'; '000000EF' = 'process'; '00000116' = 'gpu'; '00000117' = 'gpu'; '00000139' = 'driver'; '0000003B' = 'driver'; '000000A0' = 'power'; '00000154' = 'storage'; '0000007A' = 'storage' }
+function Get-CrashHistory([int]$days = 30) {
+    Set-TK -1 (T 'cr.loading') ''
+    $since = (Get-Date).AddDays(-$days)
+    $bsod = @()
+    foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WER-SystemErrorReporting'; Id = 1001; StartTime = $since } -ErrorAction SilentlyContinue)) {
+        $txt = "$($e.Message) $(@($e.Properties | ForEach-Object { $_.Value }) -join ' ')"
+        $code = ''; if ($txt -match '0x([0-9a-fA-F]{8})') { $code = $matches[1].ToUpper() }
+        $kind = 'other'; if ($BugChecks.ContainsKey($code)) { $kind = $BugChecks[$code] }
+        $bsod += [pscustomobject]@{ When = $e.TimeCreated; Code = "0x$code"; Kind = $kind }
+    }
+    $power = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-Kernel-Power'; Id = 41; StartTime = $since } -ErrorAction SilentlyContinue | ForEach-Object { $_.TimeCreated })
+    $apps = @{}
+    foreach ($e in @(Get-WinEvent -FilterHashtable @{ LogName = 'Application'; ProviderName = 'Application Error', 'Application Hang'; StartTime = $since } -ErrorAction SilentlyContinue)) {
+        $p = @($e.Properties | ForEach-Object { "$($_.Value)" })
+        $name = "$($p[0])"; if (-not $name) { continue }
+        $mod = ''; if ($e.Id -eq 1000 -and $p.Count -gt 3) { $mod = "$($p[3])" }
+        if (-not $apps.ContainsKey($name)) { $apps[$name] = [pscustomobject]@{ Name = $name; Crashes = 0; Hangs = 0; Last = $e.TimeCreated; Modules = @{} } }
+        $a = $apps[$name]
+        if ($e.Id -eq 1002) { $a.Hangs++ } else { $a.Crashes++ }
+        if ($e.TimeCreated -gt $a.Last) { $a.Last = $e.TimeCreated }
+        if ($mod) { $a.Modules[$mod] = 1 + [int]$a.Modules[$mod] }
+    }
+    $appList = foreach ($a in $apps.Values) {
+        $top = ($a.Modules.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key
+        $hint = ''; if ("$top" -match '^(nvlddmkm|nvwgf2um|nvoglv|amdkmdag|atikmdag|atidxx|amdxx|igdkmd|igd10|igdumd)') { $hint = 'gpu' } elseif ("$top" -match '^(ntdll|KERNELBASE)\.dll$') { $hint = 'generic' }
+        [pscustomobject]@{ Name = $a.Name; Crashes = $a.Crashes; Hangs = $a.Hangs; Last = $a.Last; Module = "$top"; Hint = $hint }
+    }
+    $dumps = @(Get-ChildItem -Path "$env:WINDIR\Minidump" -Filter '*.dmp' -ErrorAction SilentlyContinue).Count
+    Set-TK 100 (T 'cr.loaded') ''
+    return @{ Days = $days; Bsod = @($bsod | Sort-Object When -Descending); Power = @($power); Apps = @($appList | Sort-Object @{ e = { $_.Crashes + $_.Hangs }; Descending = $true } | Select-Object -First 15); Dumps = $dumps }
+}
+
+# ---------- Συσκευές & οδηγοί ----------
+function Get-DeviceReport {
+    Set-TK -1 (T 'dv.loading') ''
+    $prob = @()
+    foreach ($d in @(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object { $_.ConfigManagerErrorCode -and [int]$_.ConfigManagerErrorCode -notin 0, 45 })) {
+        $prob += [pscustomobject]@{ Name = "$($d.Name)"; Code = [int]$d.ConfigManagerErrorCode; Class = "$($d.PNPClass)"; Id = "$($d.DeviceID)" }
+    }
+    $drivers = @(Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue | Where-Object { $_.DeviceName -and $_.DriverDate })
+    $gpu = @($drivers | Where-Object { "$($_.DeviceClass)" -eq 'DISPLAY' } | ForEach-Object { [pscustomobject]@{ Name = "$($_.DeviceName)"; Version = "$($_.DriverVersion)"; Date = [datetime]$_.DriverDate; Vendor = "$($_.Manufacturer)" } })
+    $limit = (Get-Date).AddYears(-5)
+    $old = @($drivers | Where-Object { "$($_.DeviceClass)" -in 'DISPLAY', 'NET', 'MEDIA', 'BLUETOOTH', 'SCSIADAPTER', 'HDC', 'USB' -and [datetime]$_.DriverDate -lt $limit -and "$($_.DriverProviderName)" -notmatch '^Microsoft' } |
+        Sort-Object DriverDate | Select-Object -First 10 | ForEach-Object { [pscustomobject]@{ Name = "$($_.DeviceName)"; Date = [datetime]$_.DriverDate; Provider = "$($_.DriverProviderName)"; Version = "$($_.DriverVersion)" } })
+    $unsigned = @($drivers | Where-Object { $_.IsSigned -eq $false } | ForEach-Object { "$($_.DeviceName)" } | Select-Object -Unique -First 10)
+    Set-TK 100 (T 'dv.loaded') ''
+    return @{ Problems = $prob; Gpu = $gpu; Old = $old; Unsigned = $unsigned }
+}
+
+# ---------- Windows Update (μόνο ανάγνωση και απόκρυψη) ----------
+function Get-WuInfo {
+    Set-TK -1 (T 'wu.loading') ''
+    $s = New-Object -ComObject Microsoft.Update.Session
+    $se = $s.CreateUpdateSearcher()
+    $hist = @()
+    try {
+        $n = [math]::Min(50, $se.GetTotalHistoryCount())
+        if ($n -gt 0) {
+            foreach ($h in @($se.QueryHistory(0, $n))) {
+                if (-not $h.Title) { continue }
+                $hr = ''; if ($h.HResult -ne 0) { $hr = '0x{0:X8}' -f [int]$h.HResult }
+                $hist += [pscustomobject]@{ Title = "$($h.Title)"; Date = [datetime]$h.Date; Result = [int]$h.ResultCode; HResult = $hr }
+            }
+        }
+    } catch {}
+    Set-TK -1 (T 'wu.searching') ''
+    $pending = @(); $hidden = @()
+    try {
+        foreach ($u in @($se.Search('IsInstalled=0').Updates)) {
+            $kb = (@($u.KBArticleIDs) | ForEach-Object { "KB$_" }) -join ', '
+            $cat = (@($u.Categories) | ForEach-Object { "$($_.Name)" } | Select-Object -First 2) -join ', '
+            $o = [pscustomobject]@{ Title = "$($u.Title)"; KB = $kb; Id = "$($u.Identity.UpdateID)"; Size = [double]$u.MaxDownloadSize; Cat = $cat; Downloaded = [bool]$u.IsDownloaded }
+            if ($u.IsHidden) { $hidden += $o } else { $pending += $o }
+        }
+    } catch { Add-TKLog ((T 'wu.searchfail') -f $_.Exception.Message) 'warn' }
+    Set-TK 100 (T 'wu.loaded') ''
+    return @{ History = $hist; Pending = $pending; Hidden = $hidden }
+}
+function Set-WuHidden([string]$id, [bool]$hide) {
+    $s = New-Object -ComObject Microsoft.Update.Session
+    $r = $s.CreateUpdateSearcher().Search("UpdateID='$id'")
+    foreach ($u in @($r.Updates)) { $u.IsHidden = $hide }
+    Write-AppLog "WU hide=$hide $id"
+    return $true
+}
+
+# ---------- Διπλά αρχεία ----------
+$DupSkip = '\\(Windows|Program Files|Program Files \(x86\)|ProgramData|AppData|\$Recycle\.Bin|System Volume Information|node_modules|\.git|\.venv|venv|site-packages|__pycache__|\.gradle|\.m2|\.nuget|\.cache|bin\\Debug|bin\\Release|obj)(\\|$)'
+function Get-PartialHash([string]$p) {
+    try {
+        $fs = [IO.File]::Open($p, 'Open', 'Read', 'ReadWrite')
+        try { $buf = New-Object byte[] 65536; $n = $fs.Read($buf, 0, $buf.Length); $md5 = [Security.Cryptography.MD5]::Create(); return [BitConverter]::ToString($md5.ComputeHash($buf, 0, $n)) } finally { $fs.Dispose() }
+    } catch { return $null }
+}
+function Find-DuplicatesCore([string]$root, [double]$minSize) {
+    Set-TK -1 (T 'du.scanning') $root
+    $bySize = @{}; $n = 0
+    Get-ChildItem -LiteralPath $root -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+        $n++
+        if ($_.Length -ge $minSize -and $_.FullName -notmatch $DupSkip -and -not (Test-CriticalFile $_.FullName)) {
+            $k = [string]$_.Length; if (-not $bySize.ContainsKey($k)) { $bySize[$k] = New-Object System.Collections.Generic.List[object] }
+            $bySize[$k].Add($_)
+        }
+        if ($n % 1000 -eq 0) { Set-TK -1 $null ((T 'du.progress') -f $n) }
+    }
+    $cands = @($bySize.Values | Where-Object { $_.Count -gt 1 })
+    $groups = @(); $ci = 0
+    foreach ($c in $cands) {
+        $ci++; if ($ci % 20 -eq 0) { Set-TK (100.0 * $ci / $cands.Count) (T 'du.hashing') "$ci/$($cands.Count)" }
+        $byPart = @{}
+        foreach ($f in $c) { $h = Get-PartialHash $f.FullName; if ($h) { if (-not $byPart.ContainsKey($h)) { $byPart[$h] = @() }; $byPart[$h] += $f } }
+        foreach ($pg in @($byPart.Values | Where-Object { $_.Count -gt 1 })) {
+            $byFull = @{}
+            foreach ($f in $pg) { try { $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256 -ErrorAction Stop).Hash; if (-not $byFull.ContainsKey($h)) { $byFull[$h] = @() }; $byFull[$h] += $f } catch {} }
+            foreach ($fg in @($byFull.Values | Where-Object { $_.Count -gt 1 })) {
+                $files = @($fg | Sort-Object LastWriteTime | ForEach-Object { [pscustomobject]@{ Path = $_.FullName; Date = $_.LastWriteTime } })
+                $size = [double]$fg[0].Length
+                $groups += [pscustomobject]@{ Size = $size; Count = $files.Count; Wasted = $size * ($files.Count - 1); Files = $files }
+            }
+        }
+    }
+    $top = @($groups | Sort-Object Wasted -Descending | Select-Object -First 60)
+    $wasted = 0.0; foreach ($g in $groups) { $wasted += $g.Wasted }
+    Set-TK 100 ((T 'du.done') -f $groups.Count, (Format-Size $wasted)) ''
+    return @{ Groups = $top; Total = $groups.Count; Wasted = $wasted; Root = $root; Scanned = $n }
 }
