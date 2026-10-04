@@ -85,3 +85,17 @@ This software is provided "as is", without warranty of any kind. You use it at y
 ## 📄 License
 
 [MIT](LICENSE) © nmx88
+
+## For developers
+
+```
+app/Launcher.ps1      start-up: administrator rights, loads everything below
+app/Core.ps1          all the work (cleanup, network, PATH, updates...) - no window code
+app/gui/*.ps1         the window, one file per page, loaded in name order
+app/MainWindow.xaml   window layout and styles
+classic/PCTools.ps1   classic console mode (also provides shared functions)
+lang/*.json           texts in 6 languages (same keys in every file)
+tests/Run-Tests.ps1   automated tests
+```
+
+**Tests:** `powershell -ExecutionPolicy Bypass -File tests\Run-Tests.ps1`. On Windows they use real WPF and real (read-only) system calls and save a screenshot of every page in `tests\out\screens`; on other systems a small stand-in for WPF is used. Nothing on the PC is changed. GitHub Actions runs them on every push (download the *test-results-and-screenshots* artifact from the run), and a release is only published when they pass.

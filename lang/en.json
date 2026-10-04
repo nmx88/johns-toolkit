@@ -816,5 +816,6 @@
  "code.0x80242016": "The update did not finish installing. Restart and try again.",
  "code.0x800F0831": "A previous update package is missing. Run System repair (DISM + SFC) and try again.",
  "code.0x80070643": "Installation failed (often the Recovery partition is too small for this update). It does not harm your PC; it is safe to hide this update if it keeps failing.",
- "diag.failed": "Could not load this information. Try \"Load / refresh\" again; if it keeps failing, restart the PC."
+ "diag.failed": "Could not load this information. Try \"Load / refresh\" again; if it keeps failing, restart the PC.",
+ "net.nofile": "The program file no longer exists or cannot be read (it may have been a temporary installer)."
 }

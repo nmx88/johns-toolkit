@@ -8,3 +8,5 @@ battery-report.html
 dist/
 JohnsToolkit.exe
 *.bak
+
+tests/out/

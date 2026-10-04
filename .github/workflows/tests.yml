@@ -1,0 +1,34 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install PSScriptAnalyzer (for the code-analysis check)
+        shell: powershell
+        run: |
+          try {
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop
+          } catch { Write-Host "PSScriptAnalyzer not installed: $($_.Exception.Message) (that check will be skipped)" }
+
+      - name: Run tests (real Windows, real WPF, screenshots)
+        shell: powershell
+        run: .\tests\Run-Tests.ps1
+
+      - name: Upload results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results-and-screenshots
+          path: tests/out/
+          retention-days: 14

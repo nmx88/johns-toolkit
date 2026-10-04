@@ -11,27 +11,25 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
-      - name: Build (syntax check, exe, zips)
+      - name: Install PSScriptAnalyzer (for the code-analysis check)
         shell: powershell
-        run: .\build\Build-Release.ps1
-
-      - name: Code analysis (information only, never fails the build)
-        shell: pwsh
-        continue-on-error: true
         run: |
           try {
             Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
             Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop
-            $r = @(Invoke-ScriptAnalyzer -Path app, classic -Recurse -Severity Error, Warning)
-            Write-Host "PSScriptAnalyzer findings: $($r.Count)"
-            $r | Sort-Object Severity, ScriptName, Line | Format-Table Severity, RuleName, ScriptName, Line, Message -AutoSize -Wrap | Out-String -Width 220 | Write-Host
-          } catch {
-            Write-Host "Code analysis skipped: $($_.Exception.Message)"
-          }
-          exit 0
+          } catch { Write-Host "PSScriptAnalyzer not installed: $($_.Exception.Message) (that check will be skipped)" }
+
+      - name: Tests (a release is only published if every test passes)
+        shell: powershell
+        run: .\tests\Run-Tests.ps1
+
+      - name: Build (syntax check, exe, zips)
+        shell: powershell
+        run: .\build\Build-Release.ps1
 
       - name: Release notes from CHANGELOG.md
         if: startsWith(github.ref, 'refs/tags/')

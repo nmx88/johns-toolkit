@@ -816,5 +816,6 @@
  "code.0x80242016": "Das Update wurde nicht fertig installiert. Neu starten und erneut versuchen.",
  "code.0x800F0831": "Ein vorheriges Update-Paket fehlt. Systemreparatur (DISM + SFC) ausführen und erneut versuchen.",
  "code.0x80070643": "Installation fehlgeschlagen (oft ist die Wiederherstellungspartition zu klein für dieses Update). Es schadet dem PC nicht; du kannst das Update gefahrlos ausblenden, wenn es ständig fehlschlägt.",
- "diag.failed": "Die Informationen konnten nicht geladen werden. Erneut „Laden / aktualisieren“ versuchen; bei weiterem Fehler den PC neu starten."
+ "diag.failed": "Die Informationen konnten nicht geladen werden. Erneut „Laden / aktualisieren“ versuchen; bei weiterem Fehler den PC neu starten.",
+ "net.nofile": "Die Programmdatei existiert nicht mehr oder kann nicht gelesen werden (vielleicht ein temporäres Installationsprogramm)."
 }

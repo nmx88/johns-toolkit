@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.5.0'
+$AppVersion = '2.5.1'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
@@ -1290,7 +1290,6 @@ function Set-CleanPath([string]$scope, [int[]]$removeIdx) {
     $parts = $raw -split ';'
     $keep = for ($i = 0; $i -lt $parts.Count; $i++) { if ($removeIdx -notcontains $i -and $parts[$i].Trim()) { $parts[$i] } }
     $new = ($keep -join ';')
-    $k = Get-Item -LiteralPath $PathKeys[$scope]
     $hive = if ($scope -eq 'Machine') { [Microsoft.Win32.Registry]::LocalMachine } else { [Microsoft.Win32.Registry]::CurrentUser }
     $sub = if ($scope -eq 'Machine') { 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment' } else { 'Environment' }
     $rk = $hive.OpenSubKey($sub, $true)

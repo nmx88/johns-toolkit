@@ -816,5 +816,6 @@
  "code.0x80242016": "La mise à jour n'a pas terminé son installation. Redémarrez et réessayez.",
  "code.0x800F0831": "Un paquet de mise à jour précédent manque. Lancez la Réparation système (DISM + SFC) et réessayez.",
  "code.0x80070643": "Échec de l'installation (souvent la partition de récupération est trop petite pour cette mise à jour). Sans danger pour le PC ; vous pouvez masquer cette mise à jour si elle échoue sans cesse.",
- "diag.failed": "Impossible de charger ces informations. Réessayez « Charger / actualiser » ; si l'échec persiste, redémarrez le PC."
+ "diag.failed": "Impossible de charger ces informations. Réessayez « Charger / actualiser » ; si l'échec persiste, redémarrez le PC.",
+ "net.nofile": "Le fichier du programme n'existe plus ou ne peut pas être lu (c'était peut-être un installateur temporaire)."
 }

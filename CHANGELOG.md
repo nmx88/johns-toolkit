@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.1
+- Fix: at start-up the Diagnostics page loaded crash history in the background, greying out the window and showing a "please wait" message when the PC-specs scan started (the "Your PC" card could stay on "loading"). Diagnostics now loads only when you open it, and background scans wait their turn instead of showing a message.
+- Fix: the VirusTotal button checks that the program file still exists.
+- Fix: CPU load in classic mode on PCs with two processors.
+- The window code is split into one file per page (`app\\gui\\`), with no change in behaviour (verified function by function).
+- New automated tests (`tests\\Run-Tests.ps1`): code checks, PSScriptAnalyzer, read-only system checks, every page in every language, every button clicked with safe stand-ins, and screenshots of every page. They run on real Windows in GitHub Actions on every push, and a release is only published if they pass.
+
 ## v2.5.0
 - New **Developer** page: **PATH cleaner** (missing/duplicate/empty entries, which python runs first, backup and restore), **port finder** (who holds port 5432/8080..., with services and end-process), **DNS switcher** (Cloudflare, Quad9, Google, AdGuard, Mullvad, automatic) with speed measurement and a VPN warning.
 - New **Diagnostics** page: **crash history** (blue screens with plain explanations, unexpected shutdowns, crashing programs with GPU-driver detection), **devices & drivers** (error codes explained, graphics driver age with vendor links, old and unsigned drivers), **Windows Update** (pending, hidden, history with 13 explained error codes, hide/unhide).

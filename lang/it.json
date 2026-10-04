@@ -816,5 +816,6 @@
  "code.0x80242016": "L'aggiornamento non ha finito l'installazione. Riavvia e riprova.",
  "code.0x800F0831": "Manca un pacchetto di aggiornamento precedente. Esegui la Riparazione di sistema (DISM + SFC) e riprova.",
  "code.0x80070643": "Installazione non riuscita (spesso la partizione di ripristino è troppo piccola per questo aggiornamento). Non danneggia il PC; puoi nasconderlo in sicurezza se continua a fallire.",
- "diag.failed": "Impossibile caricare queste informazioni. Riprova «Carica / aggiorna»; se continua a fallire, riavvia il PC."
+ "diag.failed": "Impossibile caricare queste informazioni. Riprova «Carica / aggiorna»; se continua a fallire, riavvia il PC.",
+ "net.nofile": "Il file del programma non esiste più o non è leggibile (forse era un programma di installazione temporaneo)."
 }

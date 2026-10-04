@@ -62,7 +62,7 @@ if (-not $isAdmin) {
 
 # 3) Load the engine (classic functions + core)
 try {
-    foreach ($f in @((Join-Path $ToolDir 'PCTools.ps1'), (Join-Path $PSScriptRoot 'Core.ps1'), (Join-Path $PSScriptRoot 'Worker.ps1'), (Join-Path $PSScriptRoot 'Gui.ps1'), (Join-Path $PSScriptRoot 'MainWindow.xaml'))) {
+    foreach ($f in @((Join-Path $ToolDir 'PCTools.ps1'), (Join-Path $PSScriptRoot 'Core.ps1'), (Join-Path $PSScriptRoot 'Worker.ps1'), (Join-Path $PSScriptRoot 'gui\99-Window.ps1'), (Join-Path $PSScriptRoot 'MainWindow.xaml'))) {
         if (-not (Test-Path -LiteralPath $f)) { throw "Missing file: $f" }
     }
     $classicText = Read-Utf8 (Join-Path $ToolDir 'PCTools.ps1')
@@ -96,7 +96,10 @@ if ($Auto) {
     $script:GuiMutex = [System.Threading.Mutex]::new($true, 'Local\JohnsToolkitGui', [ref]$createdNew)
     if (-not $createdNew) { Write-Stage 'already running: this copy closes'; exit }
     $guiCode = $null
-    try { $guiCode = [scriptblock]::Create($Engine + "`r`n" + (Read-Utf8 (Join-Path $PSScriptRoot 'Gui.ps1'))) }
+    # The window code lives in app\gui\*.ps1 (one file per page), loaded in name order
+    $guiParts = @(Get-ChildItem -Path (Join-Path $PSScriptRoot 'gui') -Filter '*.ps1' | Sort-Object Name | ForEach-Object { "# ===== $($_.Name) =====`r`n" + (Read-Utf8 $_.FullName) })
+    Write-Stage "window code: $($guiParts.Count) files"
+    try { $guiCode = [scriptblock]::Create($Engine + "`r`n" + ($guiParts -join "`r`n") + "`r`nStart-JohnsToolkitWindow") }
     catch {
         Write-Stage "GUI CODE PARSE FAILED: $($_.Exception.Message)"
         Show-Msg "John's Toolkit could not start (code error).`n`n$($_.Exception.Message)"

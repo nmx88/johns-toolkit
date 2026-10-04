@@ -1345,7 +1345,8 @@ function Show-Health {
     if ($up.Days -ge 7) { Write-Note 'Το PC δεν έχει κάνει επανεκκίνηση πάνω από μια εβδομάδα. Μια επανεκκίνηση βοηθάει.' }
 
     Write-Host ''
-    if ($cpu.LoadPercentage -ne $null) { Write-Segs (Get-GaugeLine 'Επεξεργ.' ([double]$cpu.LoadPercentage) 'φόρτος τώρα' 70 90) }
+    $load = @($cpu | ForEach-Object { $_.LoadPercentage } | Where-Object { $null -ne $_ })   # PCs with 2 processors return a list
+    if ($load.Count -gt 0) { Write-Segs (Get-GaugeLine 'Επεξεργ.' ([double](($load | Measure-Object -Average).Average)) 'φόρτος τώρα' 70 90) }
     if ($totalRam -gt 0) {
         $rp = ($totalRam - $freeRam) / $totalRam * 100
         Write-Segs (Get-GaugeLine 'Μνήμη' $rp ('{0} από {1}' -f (Format-Size ($totalRam - $freeRam)), (Format-Size $totalRam)) 80 90)

@@ -816,5 +816,6 @@
  "code.0x80242016": "La actualización no terminó de instalarse. Reinicia y vuelve a intentarlo.",
  "code.0x800F0831": "Falta un paquete de actualización anterior. Ejecuta la Reparación del sistema (DISM + SFC) y vuelve a intentarlo.",
  "code.0x80070643": "La instalación falló (a menudo la partición de recuperación es pequeña para esta actualización). No daña el PC; puedes ocultarla con seguridad si sigue fallando.",
- "diag.failed": "No se pudo cargar esta información. Prueba de nuevo «Cargar / actualizar»; si sigue fallando, reinicia el PC."
+ "diag.failed": "No se pudo cargar esta información. Prueba de nuevo «Cargar / actualizar»; si sigue fallando, reinicia el PC.",
+ "net.nofile": "El archivo del programa ya no existe o no se puede leer (quizá era un instalador temporal)."
 }
