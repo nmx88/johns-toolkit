@@ -164,7 +164,7 @@ function New-AppShortcut { '' }
 function Test-NewVersion { $null }
 function Send-Toast { }
 function Select-Folder { $null }
-function New-BatteryReport { '' }
+function New-BatteryReport { $null }
 function Export-NetReportCore($d) { '' }
 function Start-Classic { }
 function Set-CleanPath($s, $i) { '' }
@@ -232,7 +232,7 @@ Write-Host "`n3) Read-only system information (real calls)" -ForegroundColor Cya
 $probes = [ordered]@{
     'Windows version' = { $o = Get-OSInfo; if (-not $o.Name) { 'FAIL:no name' } else { "$($o.Name) $($o.Version) build $($o.Build)" } }
     'Dashboard' = { $d = Get-Dashboard; if ($d.DiskPct -lt 0 -or $d.DiskPct -gt 100) { "FAIL:disk $($d.DiskPct)" } else { "disk $([int]$d.DiskPct)% ram $([int]$d.RamPct)%" } }
-    'PC specs' = { $s = @(Get-PcSpecs); if ($s.Count -lt 3) { "FAIL:only $($s.Count) rows" } else { "$($s.Count) rows" } }
+    'PC specs' = { $s = Get-PcSpecs; if ($s.Count -lt 3) { "FAIL:only $($s.Count) rows" } else { "$($s.Count) rows" } }
     'Fixed drives' = { $d = @(Get-FixedDrives); if ($d.Count -lt 1) { 'FAIL:none' } else { ($d | ForEach-Object { $_.Letter }) -join ' ' } }
     'VPN detection' = { "$(@(Get-VpnStatus).Count) found" }
     'PATH report' = { $r = Get-PathReport; if (@($r.Machine).Count -lt 1) { 'FAIL:empty system PATH' } else { "$(@($r.Machine).Count) system + $(@($r.User).Count) user entries" } }
@@ -242,8 +242,8 @@ $probes = [ordered]@{
     'Startup entries' = { "$(@(Get-StartupEntries).Count) entries" }
     'Crash history (7 days)' = { $c = Get-CrashHistory 7; if ($null -eq $c.Days) { 'FAIL:no result' } else { "$(@($c.Bsod).Count) bsod, $(@($c.Apps).Count) apps" } }
     'Devices & drivers' = { $d = Get-DeviceReport; if ($null -eq $d) { 'FAIL:no result' } else { "$(@($d.Problems).Count) problems, $(@($d.Gpu).Count) gpu" } }
-    'Security status' = { $s = @(Get-SecurityStatus); if ($s.Count -lt 3) { "FAIL:only $($s.Count)" } else { "$($s.Count) checks" } }
-    'Health status' = { "$(@(Get-HealthStatus).Count) rows" }
+    'Security status' = { $s = Get-SecurityStatus; if ($s.Count -lt 3) { "FAIL:only $($s.Count)" } else { "$($s.Count) checks" } }
+    'Health status' = { $h = Get-HealthStatus; if ($h.Count -lt 1) { 'FAIL:no rows' } else { "$($h.Count) rows" } }
     'Boot times' = { "$(@(Get-BootTimes).Count) records" }
     'Windows settings state' = { $n = 0; foreach ($t in $Tweaks) { $null = Get-TweakState $t; $n++ }; "$n settings read" }
     'WSL/Docker disks' = { "$(@(Get-WslDisks).Count) found" }

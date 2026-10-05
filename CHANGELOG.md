@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.5.2
+- Reading a Windows setting that was never changed no longer records an error each time (cleaner `logs\\errors.log`). Found by the first test run on a clean Windows.
+- The battery-report button handles a report that could not be created.
+- Tests: three system checks counted list results wrongly.
+
 ## v2.5.1
 - Fix: at start-up the Diagnostics page loaded crash history in the background, greying out the window and showing a "please wait" message when the PC-specs scan started (the "Your PC" card could stay on "loading"). Diagnostics now loads only when you open it, and background scans wait their turn instead of showing a message.
 - Fix: the VirusTotal button checks that the program file still exists.

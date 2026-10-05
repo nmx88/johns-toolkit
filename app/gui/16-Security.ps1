@@ -38,7 +38,7 @@ function Build-SecurityPage {
             'sec.hvci.off' { $act = New-Button (T 'hvci.btn') 'Secondary'; $act.Add_Click({ Start-Process 'windowsdefender://coreisolation' }) }
             'sec.fw.off' { $act = New-Button (T 'sec.open') 'Secondary'; $act.Add_Click({ Start-Process 'windowsdefender://network' }) }
             'sec.av.none' { $act = New-Button (T 'sec.open') 'Secondary'; $act.Add_Click({ Start-Process 'windowsdefender:' }) }
-            'hl.battery' { $act = New-Button (T 'hl.battery.btn') 'Secondary'; $act.Add_Click({ $f = New-BatteryReport; if (Test-Path $f) { Start-Process $f } }) }
+            'hl.battery' { $act = New-Button (T 'hl.battery.btn') 'Secondary'; $act.Add_Click({ $f = New-BatteryReport; if ($f -and (Test-Path -LiteralPath $f)) { Start-Process $f } else { Show-Info (T 'diag.failed') } }) }
             'hl.uptime.long' { $act = New-Button (T 'hl.restart.btn') 'Secondary'; $act.Add_Click({ if (Confirm-Box (T 'hl.restart.confirm')) { Restart-Computer -Force } }) }
         }
         if ($act) { $act.Margin = '12,0,0,0'; $act.VerticalAlignment = 'Center'; [Windows.Controls.Grid]::SetColumn($act, 2); [void]$g.Children.Add($act) }

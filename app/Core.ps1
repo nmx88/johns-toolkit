@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.5.1'
+$AppVersion = '2.5.2'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }

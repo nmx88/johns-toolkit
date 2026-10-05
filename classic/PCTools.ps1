@@ -544,9 +544,10 @@ function Select-Exe {
 #  ΜΗΤΡΩΟ (registry) & ΑΝΤΙΓΡΑΦΟ ΑΣΦΑΛΕΙΑΣ ΡΥΘΜΙΣΕΩΝ
 # ======================================================================
 function Get-RegValue($path, $name) {
-    $item = Get-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
-    if ($null -eq $item) { return $null }
-    return $item.$name
+    # A setting that was never changed has no value yet: return $null without writing an error
+    # (Get-ItemProperty would add one to $Error every time, filling logs\errors.log with noise)
+    if (-not (Test-Path -LiteralPath $path)) { return $null }
+    try { return (Get-Item -LiteralPath $path -ErrorAction Stop).GetValue($name, $null) } catch { return $null }
 }
 function Set-RegValue($path, $name, $type, $value) {
     if ($null -eq $value) { Remove-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue; return }
