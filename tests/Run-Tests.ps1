@@ -229,7 +229,7 @@ function Export-NetReportCore($d) { '' }
 function Start-Classic { }
 function Set-CleanPath($s, $i) { '' }
 function Restore-PathBackup($f) { 'User' }
-function Set-DnsPreset($p) { 1 }
+function Set-DnsPreset($p) { @{ Changed = 1; Before = @() } }
 function Set-WuHidden($i, $h) { $true }
 function Write-AppLog { }
 function Add-History { }
@@ -392,13 +392,13 @@ Invoke-Check 'search' 'Search: every entry, accents ignored, English works in Gr
     Set-AppLanguage 'el'; Set-AllTexts
     $all = @(Get-PaletteEntries ''); if ($all.Count -lt 60) { return "FAIL:only $($all.Count) entries" }
     $find = { param($q) $UI.PaletteBox.Text = $q; $App.PalSel = 0; Update-PaletteResults; @($App.PalItems) }
-    $r1 = & $find 'θυρες'; if (-not ($r1 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'θυρες' (no accent) did not find the Ports tab" }
-    $r2 = & $find 'ports'; if (-not ($r2 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'ports' (English) did not find the Ports tab in Greek" }
-    $r3 = & $find '5432'; if ($r3.Count -lt 1 -or $r3[0].Label -notlike '*5432*') { return "FAIL:'5432' did not offer the port lookup first (got: $(($r3 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
-    $r6 = & $find 'θυρα'; if ($r6.Count -lt 1 -or $r6[0].Label -notlike '*Θύρες*') { return "FAIL:'θυρα' should find the Ports tab first (got: $(($r6 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
-    $r7 = & $find 'port'; if ($r7.Count -lt 1 -or $r7[0].Label -notlike '*Θύρες*') { return "FAIL:'port' should find the Ports tab first (got: $(($r7 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
-    $r4 = & $find 'synthwave'; if (-not ($r4 | Where-Object { $_.Label -like '*Synthwave*' })) { return "FAIL:'synthwave' did not find the theme" }
-    $r5 = & $find 'zzzqqq'; if ($r5.Count -ne 0) { return 'FAIL:nonsense found something' }
+    $r1 = @(& $find 'θυρες'); if (-not ($r1 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'θυρες' (no accent) did not find the Ports tab" }
+    $r2 = @(& $find 'ports'); if (-not ($r2 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'ports' (English) did not find the Ports tab in Greek" }
+    $r3 = @(& $find '5432'); if ($r3.Count -lt 1 -or $r3[0].Label -notlike '*5432*') { return "FAIL:'5432' did not offer the port lookup first (got: $(($r3 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
+    $r6 = @(& $find 'θυρα'); if ($r6.Count -lt 1 -or $r6[0].Label -notlike '*Θύρες*') { return "FAIL:'θυρα' should find the Ports tab first (got: $(($r6 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
+    $r7 = @(& $find 'port'); if ($r7.Count -lt 1 -or $r7[0].Label -notlike '*Θύρες*') { return "FAIL:'port' should find the Ports tab first (got: $(($r7 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
+    $r4 = @(& $find 'synthwave'); if (-not ($r4 | Where-Object { $_.Label -like '*Synthwave*' })) { return "FAIL:'synthwave' did not find the theme" }
+    $r5 = @(& $find 'zzzqqq'); if ($r5.Count -ne 0) { return 'FAIL:nonsense found something' }
     Set-AppLanguage 'en'; Set-AllTexts
     "$($all.Count) entries"
 } -OnlyExceptions

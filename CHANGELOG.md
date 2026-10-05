@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.3
+- Tests: on Windows PowerShell 5.1 a single search result is not a list, and `.Count` of a single custom object is empty; the search checks now always work with lists. (The app itself was fine: the search showed the right result.)
+- Clearer result names in two internal functions (DNS change, large-file scan); no change in behaviour.
+
 ## v2.6.2
 - The EXIT sign is about 20% smaller and sits further to the right.
 - Fix: after an undo in History, the Apps (startup), Developer (PATH, DNS) and Windows settings pages now refresh at once.

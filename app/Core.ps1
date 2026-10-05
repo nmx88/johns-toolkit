@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.6.2'
+$AppVersion = '2.6.3'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
@@ -1008,7 +1008,7 @@ function Find-BigFilesCore([string]$root) {
     }
     $top = @($big | Sort-Object Size -Descending | Select-Object -First 40)
     Set-TK 100 ((T 'bf.done') -f $n, (Format-Size $bytes)) ''
-    return @{ Files = $top; Count = $n; Bytes = $bytes; Root = $root }
+    return @{ Files = $top; Scanned = $n; Bytes = $bytes; Root = $root }   # not 'Count': a hashtable's own .Count would hide it
 }
 
 # ---------- Υγεία δίσκων (προστίθεται στη σελίδα Ασφάλειας) ----------
@@ -1354,7 +1354,7 @@ function Set-DnsPreset([string]$preset) {
     }
     Clear-DnsClientCache -ErrorAction SilentlyContinue
     Write-AppLog "DNS -> $preset ($n adapters)"
-    return @{ Count = $n; Before = $before }
+    return @{ Changed = $n; Before = $before }   # not 'Count': a hashtable's own .Count would hide it
 }
 function Measure-DnsPresets {
     $res = [ordered]@{}; $names = @('www.google.com', 'www.wikipedia.org', 'github.com', 'www.microsoft.com')

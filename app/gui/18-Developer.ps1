@@ -156,7 +156,7 @@ function Build-DnsTab {
     $b1.Add_Click({
         if (-not $App.DnsPick) { Show-Info (T 'dns.pick'); return }
         if (-not (Confirm-Box ((T 'dns.confirm') -f (T "dns.p.$($App.DnsPick)")))) { return }
-        $r = Set-DnsPreset $App.DnsPick; $n = $r.Count
+        $r = Set-DnsPreset $App.DnsPick; $n = [int]$r.Changed
         if ($n -gt 0) { [void](Add-History 'dns' 'hist.dns' @((T "dns.p.$($App.DnsPick)")) @{ Type = 'dns'; Before = @($r.Before) }) }
         Set-DevMsg ((T 'dns.done') -f (T "dns.p.$($App.DnsPick)"), $n); Build-DevBody
     }); [void]$bw.Children.Add($b1)
