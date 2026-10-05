@@ -64,6 +64,7 @@ function Start-Clean([switch]$Defaults) {
         foreach ($k in $r.Results.Keys) { if ($App.SizeLabels.ContainsKey($k) -and $k -ne 'dns') { $App.SizeLabels[$k].Text = '✓ ' + (Format-Size $r.Results[$k].Freed) } }
         $UI.TxtCleanSum.Text = (T 'clean.result') -f (Format-Size $r.Total), (Format-Time $r.Seconds)
         $App.Settings.totalFreed = [double]$App.Settings.totalFreed + [double]$r.Total
+        if ([double]$r.Total -gt 0) { [void](Add-History 'cleanup' 'hist.cleanup' @((Format-Size $r.Total))) }
         $App.Settings.lastClean = (Get-Date).ToString('s')
         Save-AppSettings $App.Settings
         if ($r.Seconds -ge 60) { Send-Toast $AppName ((T 'clean.result') -f (Format-Size $r.Total), (Format-Time $r.Seconds)) }
@@ -164,7 +165,7 @@ function Start-LeftoverRemove {
     if (-not (Confirm-Box ((T 'lo.confirm') -f $sel.Count))) { return }
     Start-Task 'lo.removing' 'Remove-LeftoversCore $TK.Args.Items' @{ Items = $sel } {
         param($TK)
-        $r = $TK.Result; if ($r) { $App.LeftMsg = (T 'lo.result') -f $r.Ok, $r.Fail }
+        $r = $TK.Result; if ($r) { $App.LeftMsg = (T 'lo.result') -f $r.Ok, $r.Fail; if ($r.Ok -gt 0) { [void](Add-History 'leftovers' 'hist.leftovers' @($r.Ok) @{ Type = 'leftovers'; Dir = "$($r.Dir)" }) } }
         $App.Leftovers = $null; Build-LeftoverList
     }
 }
@@ -217,7 +218,7 @@ function Build-BigList {
             try {
                 Add-Type -AssemblyName Microsoft.VisualBasic
                 [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($path, 'OnlyErrorDialogs', 'SendToRecycleBin')
-                Write-AppLog "Recycle: $path"
+                Write-AppLog "Recycle: $path"; [void](Add-History 'recycle' 'hist.recycle1' @((Split-Path $path -Leaf)) @{ Type = 'recyclebin' })
                 $App.Big.Files = @($App.Big.Files | Where-Object { $_.Path -ne $path }); Build-BigList
             } catch { Show-Info ((T 'bf.recycle.fail') -f $_.Exception.Message) }
         })
@@ -240,7 +241,7 @@ function Add-WslCard($p) {
         if (Test-DockerRunning) { Show-Info (T 'wsl.docker'); return }
         if (-not (Confirm-Box (T 'wsl.confirm'))) { return }
         $paths = @(Get-WslDisks | ForEach-Object { $_.Path })
-        Start-Task 'wsl.running' 'Invoke-CompactWslDisks $TK.Args.Paths' @{ Paths = $paths } { param($TK); if ($TK.Result) { Show-Info ((T 'wsl.done') -f (Format-Size $TK.Result.Saved)) }; Build-BigList }
+        Start-Task 'wsl.running' 'Invoke-CompactWslDisks $TK.Args.Paths' @{ Paths = $paths } { param($TK); if ($TK.Result) { Show-Info ((T 'wsl.done') -f (Format-Size $TK.Result.Saved)); [void](Add-History 'cleanup' 'hist.wsl' @((Format-Size $TK.Result.Saved))) }; Build-BigList }
     })
     [void]$sp.Children.Add($b)
     $card.Child = $sp; [void]$p.Children.Add($card)
@@ -286,7 +287,7 @@ function Build-DupeList {
             Add-Type -AssemblyName Microsoft.VisualBasic
             $ok = 0
             foreach ($f in $sel) { try { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($f, 'OnlyErrorDialogs', 'SendToRecycleBin'); $ok++; $App.DupSel.Remove($f) } catch {} }
-            Write-AppLog "Duplicates to Recycle Bin: $ok"
+            Write-AppLog "Duplicates to Recycle Bin: $ok"; if ($ok -gt 0) { [void](Add-History 'recycle' 'hist.dupes' @($ok) @{ Type = 'recyclebin' }) }
             foreach ($g in @($App.Dupes.Groups)) { $g.Files = @($g.Files | Where-Object { Test-Path -LiteralPath $_.Path }) }
             $App.Dupes.Groups = @($App.Dupes.Groups | Where-Object { @($_.Files).Count -gt 1 })
             Show-Info ((T 'du.recycled') -f $ok); Build-DupeList

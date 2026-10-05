@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.6.0
+- **Search (Ctrl+K)**: jump to any page, tab, Windows setting, theme or language, or run an action, by typing. Works in any of the 6 languages at once and ignores accents ("θυρες" finds "Θύρες"); type a number to see who uses that port. Also from the new Search button in the menu.
+- **History** page: every change John's Toolkit makes is recorded, with one-click **undo** for Windows settings, startup apps, PATH, DNS, power plan, leftovers, frozen programs and hidden Windows updates. Files sent to the Recycle Bin are marked and can be restored from there.
+- **In-app update**: once a day (can be turned off) it checks GitHub; "Update" downloads the new version, verifies its SHA-256 checksum, replaces the program files (settings, history and logs are kept) and restarts. Copies that are git repositories are never overwritten (use git pull).
+- Tests: history logic, update choice and git protection, search (accents, languages, ports) and every search result; the update flow was also tested end-to-end against a local copy of GitHub (good, tampered and malformed packages).
+
+## v2.5.3
+- Fix: the neon "Welcome" sign was clipped at the bottom (script letters reach outside the font's line box). Each letter's space is now sized from its real outline, and a test measures that nothing is cut.
+- Fix: the Windows Update error code was shown twice.
+- The menu always highlights the page that is open, however the page was changed.
+- Empty status lines no longer leave a gap under the tabs.
+- Found from the first screenshots taken by the automated tests on real Windows.
+
 ## v2.5.2
 - Reading a Windows setting that was never changed no longer records an error each time (cleaner `logs\\errors.log`). Found by the first test run on a clean Windows.
 - The battery-report button handles a report that could not be created.

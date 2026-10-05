@@ -146,7 +146,7 @@ function Build-WuTab {
             $tt = New-Text ("  $($h.Date.ToString('d', (Get-LangCulture)))   $($h.Title)") 13 'TextBrush'; [void]$head.Children.Add($tt); [void]$s.Children.Add($head)
             if ($h.HResult -and $h.Result -ge 3) {
                 $why = Get-CodeText ([Convert]::ToInt32($h.HResult, 16))
-                [void]$s.Children.Add((New-Text ("$($h.HResult): $why") 12 $br))
+                [void]$s.Children.Add((New-Text $why 12 $br))
             }
             $c.Child = $s; [void]$p.Children.Add($c)
         }
@@ -163,7 +163,7 @@ function New-WuRow($u, [bool]$pending) {
     $b.Add_Click({
         $x = $this.Tag
         if ($x.Hide -and -not (Confirm-Box ((T 'wu.hide.confirm') -f $x.Title))) { return }
-        Start-Task 'wu.changing' 'Set-WuHidden $TK.Args.Id $TK.Args.Hide' @{ Id = $x.Id; Hide = $x.Hide } { param($TK); Start-DiagLoad 'wu' }
+        Start-Task 'wu.changing' 'Set-WuHidden $TK.Args.Id $TK.Args.Hide' @{ Id = $x.Id; Hide = $x.Hide; Title = $x.Title } { param($TK); if ($TK.Result) { [void](Add-History 'wu' $(if ($TK.Args.Hide) { 'hist.wu.hide' } else { 'hist.wu.show' }) @($TK.Args.Title) @{ Type = 'wu'; Id = $TK.Args.Id; Hidden = [bool]$TK.Args.Hide }) }; Start-DiagLoad 'wu' }
     })
     $c.Child = (New-Row $s $b)
     return $c

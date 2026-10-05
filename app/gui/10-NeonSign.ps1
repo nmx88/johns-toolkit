@@ -33,7 +33,12 @@ function Build-NeonSign {
                 # Γράμμα σαν σωλήνας neon: περίγραμμα του γράμματος + αέριο μέσα + εξωτερική λάμψη
                 $ft = [Windows.Media.FormattedText]::new([string]$ch, [Globalization.CultureInfo]::CurrentUICulture, [Windows.FlowDirection]::LeftToRight, $tf, 50.0, $core)
                 $geo = $ft.BuildGeometry([Windows.Point]::new(0, 0))
-                $g = [Windows.Controls.Grid]::new(); $g.Width = $ft.WidthIncludingTrailingWhitespace; $g.Height = $ft.Height
+                # Script letters reach outside the font's line box and the halo adds 3 px more:
+                # size the cell from the real outline, otherwise WPF clips the bottom of the letters
+                $bd = $geo.Bounds; $pad = 6
+                $g = [Windows.Controls.Grid]::new(); $g.ClipToBounds = $false
+                $g.Width = [Math]::Max($ft.WidthIncludingTrailingWhitespace, $bd.Right + $pad)
+                $g.Height = [Math]::Max($ft.Height, $bd.Bottom + $pad)
                 $back = [Windows.Shapes.Path]::new(); $back.Data = $geo; $back.Stroke = $halo; $back.StrokeThickness = 6; $back.StrokeLineJoin = 'Round'
                 $back.Effect = New-Glow $acc 34
                 $tube = [Windows.Shapes.Path]::new(); $tube.Data = $geo; $tube.Stroke = $core; $tube.StrokeThickness = 2.2; $tube.StrokeLineJoin = 'Round'; $tube.Fill = $gas

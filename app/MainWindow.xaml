@@ -27,6 +27,13 @@
       <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
+    <!-- Status lines: no empty gap while there is nothing to say -->
+    <Style x:Key="StatusMsg" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+      <Style.Triggers>
+        <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger>
+        <Trigger Property="Text" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed"/></Trigger>
+      </Style.Triggers>
+    </Style>
 
     <!-- Κάρτα -->
     <Style x:Key="Card" TargetType="Border">
@@ -252,6 +259,7 @@
         </StackPanel>
         <TextBlock x:Name="TxtVersion" DockPanel.Dock="Bottom" FontSize="11" Foreground="{DynamicResource SubBrush}" Margin="8,0,0,0"/>
         <StackPanel>
+          <Button x:Name="BtnSearch" Style="{StaticResource Secondary}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Margin="0,0,0,12" Padding="12,8"/>
           <RadioButton x:Name="NavHome" Style="{StaticResource NavButton}" Tag="&#xE80F;" IsChecked="True"/>
           <RadioButton x:Name="NavClean" Style="{StaticResource NavButton}" Tag="&#xE74D;"/>
           <RadioButton x:Name="NavTweaks" Style="{StaticResource NavButton}" Tag="&#xE9E9;"/>
@@ -262,6 +270,7 @@
           <RadioButton x:Name="NavDev" Style="{StaticResource NavButton}" Tag="&#xE943;"/>
           <RadioButton x:Name="NavRepair" Style="{StaticResource NavButton}" Tag="&#xE90F;"/>
           <RadioButton x:Name="NavTools" Style="{StaticResource NavButton}" Tag="&#xE8F1;" Visibility="Collapsed"/>
+          <RadioButton x:Name="NavHistory" Style="{StaticResource NavButton}" Tag="&#xE81C;"/>
           <RadioButton x:Name="NavSettings" Style="{StaticResource NavButton}" Tag="&#xE713;"/>
         </StackPanel>
       </DockPanel>
@@ -283,10 +292,13 @@
           <TextBlock x:Name="PageTitle" FontSize="28" FontWeight="SemiBold"/>
           <TextBlock x:Name="PageSub" FontSize="14" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
         </StackPanel>
-        <Border x:Name="RestartBanner" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="10" Padding="14,8"
-                BorderThickness="1.5" BorderBrush="{DynamicResource WarnBrush}" Visibility="Collapsed">
-          <TextBlock x:Name="TxtRestart" Foreground="{DynamicResource WarnBrush}" FontWeight="SemiBold"/>
-        </Border>
+        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Orientation="Horizontal">
+          <Button x:Name="BtnUpdateBanner" Style="{StaticResource Primary}" Margin="0,0,10,0" Visibility="Collapsed"/>
+          <Border x:Name="RestartBanner" CornerRadius="10" Padding="14,8"
+                  BorderThickness="1.5" BorderBrush="{DynamicResource WarnBrush}" Visibility="Collapsed">
+            <TextBlock x:Name="TxtRestart" Foreground="{DynamicResource WarnBrush}" FontWeight="SemiBold"/>
+          </Border>
+        </StackPanel>
       </Grid>
 
       <Grid Grid.Row="1" x:Name="PagesHost">
@@ -397,7 +409,7 @@
               <Button x:Name="BtnRestoreAll" Style="{StaticResource Secondary}" Margin="0,0,10,8"/>
               <Button x:Name="BtnExplorer" Style="{StaticResource Secondary}" Margin="0,0,10,8"/>
             </WrapPanel>
-            <TextBlock x:Name="TxtTweakMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
+            <TextBlock x:Name="TxtTweakMsg" Style="{StaticResource StatusMsg}" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
             <StackPanel x:Name="TweakList"/>
           </StackPanel>
         </ScrollViewer>
@@ -406,7 +418,7 @@
         <ScrollViewer x:Name="PageApps" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
           <StackPanel>
             <WrapPanel x:Name="AppsTabs" Margin="0,0,0,10"/>
-            <TextBlock x:Name="TxtAppsMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
+            <TextBlock x:Name="TxtAppsMsg" Style="{StaticResource StatusMsg}" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" Margin="2,0,0,10"/>
             <StackPanel x:Name="AppsBody"/>
           </StackPanel>
         </ScrollViewer>
@@ -428,7 +440,7 @@
         <ScrollViewer x:Name="PageDev" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
           <StackPanel>
             <WrapPanel x:Name="DevTabs" Margin="0,0,0,10"/>
-            <TextBlock x:Name="TxtDevMsg" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="2,0,0,10"/>
+            <TextBlock x:Name="TxtDevMsg" Style="{StaticResource StatusMsg}" Foreground="{DynamicResource GoodBrush}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="2,0,0,10"/>
             <StackPanel x:Name="DevBody"/>
           </StackPanel>
         </ScrollViewer>
@@ -449,6 +461,10 @@
         </ScrollViewer>
 
         <!-- Ρυθμίσεις εφαρμογής -->
+        <ScrollViewer x:Name="PageHistory" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
+          <StackPanel x:Name="HistoryBody"/>
+        </ScrollViewer>
+
         <ScrollViewer x:Name="PageSettings" VerticalScrollBarVisibility="Auto" Padding="36,4,36,20" Visibility="Collapsed">
           <StackPanel>
             <Border Style="{StaticResource Card}">
@@ -481,6 +497,16 @@
                   <TextBlock x:Name="SetFlickerD" FontSize="12" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
                 </StackPanel>
                 <CheckBox x:Name="ChkFlicker" Grid.Column="1" Style="{StaticResource Switch}"/>
+              </Grid>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,16,0">
+                  <TextBlock x:Name="SetAutoUpdT" FontWeight="SemiBold"/>
+                  <TextBlock x:Name="SetAutoUpdD" FontSize="12" Foreground="{DynamicResource SubBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                </StackPanel>
+                <CheckBox x:Name="ChkAutoUpdate" Grid.Column="1" Style="{StaticResource Switch}"/>
               </Grid>
             </Border>
             <WrapPanel Margin="0,4,0,12">
@@ -519,6 +545,22 @@
           </Grid>
           <ListBox x:Name="LogList" Height="150" Margin="0,12,0,0" Visibility="Collapsed" Background="{DynamicResource CardBrush}"
                    BorderBrush="{DynamicResource LineBrush}" FontFamily="Cascadia Mono, Consolas" FontSize="12"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- ===================== ΑΝΑΖΗΤΗΣΗ (Ctrl+K) ===================== -->
+    <Grid x:Name="Palette" Grid.ColumnSpan="2" Visibility="Collapsed" Background="#B3000000">
+      <Border x:Name="PaletteCard" Width="640" VerticalAlignment="Top" Margin="0,80,0,0" Padding="16" CornerRadius="14"
+              Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1.5">
+        <Border.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="30" ShadowDepth="0" Opacity="0.55"/></Border.Effect>
+        <StackPanel>
+          <TextBox x:Name="PaletteBox" FontSize="18" Padding="10,8" BorderThickness="1.5" Background="{DynamicResource BgBrush}"
+                   Foreground="{DynamicResource TextBrush}" BorderBrush="{DynamicResource LineBrush}" CaretBrush="{DynamicResource AccentBrush}"/>
+          <TextBlock x:Name="PaletteHint" FontSize="11" Foreground="{DynamicResource SubBrush}" Margin="4,8,0,8"/>
+          <ScrollViewer MaxHeight="430" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="PaletteList"/>
+          </ScrollViewer>
         </StackPanel>
       </Border>
     </Grid>

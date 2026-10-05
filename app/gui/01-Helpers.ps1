@@ -139,6 +139,18 @@ function Update-TaskUI {
 }
 
 function Show-Page([string]$name) {
+    # The menu always shows the page that is open, however the page was changed.
+    # Ticking the menu button runs its own handler (which calls Show-Page again): the guard stops that second call.
+    if ($App.ShowingPage) { return }
+    $App.ShowingPage = $true
+    try {
+        $nav = $UI["Nav$name"]; if ($nav -and -not $nav.IsChecked) { $nav.IsChecked = $true }
+        Show-PageCore $name
+    } finally { $App.ShowingPage = $false }
+}
+
+function Show-PageCore([string]$name) {
+    if ($name -eq 'History') { Build-HistoryPage }
     $App.Page = $name
     foreach ($k in $Pages.Keys) { if ($k -eq $name) { $UI[$Pages[$k]].Visibility = 'Visible' } else { $UI[$Pages[$k]].Visibility = 'Collapsed' } }
     $UI.PageTitle.Text = T "page.$($name.ToLower()).t"
@@ -209,12 +221,12 @@ function Set-AllTexts {
     $os = $App.Os
     $UI.TxtOs.Text = "$($os.Name) $($os.Version)".Trim()
     $UI.TxtVersion.Text = "v$AppVersion · $(T 'app.for')"
-    $nav = @{ NavHome = 'nav.home'; NavClean = 'nav.clean'; NavTweaks = 'nav.tweaks'; NavApps = 'nav.apps'; NavNet = 'nav.net'; NavSecurity = 'nav.security'; NavDiag = 'nav.diag'; NavDev = 'nav.dev'; NavRepair = 'nav.repair'; NavTools = 'nav.tools'; NavSettings = 'nav.settings' }
+    $nav = @{ NavHome = 'nav.home'; NavClean = 'nav.clean'; NavTweaks = 'nav.tweaks'; NavApps = 'nav.apps'; NavNet = 'nav.net'; NavSecurity = 'nav.security'; NavDiag = 'nav.diag'; NavDev = 'nav.dev'; NavRepair = 'nav.repair'; NavTools = 'nav.tools'; NavHistory = 'nav.history'; NavSettings = 'nav.settings' }
     foreach ($k in $nav.Keys) { $UI[$k].Content = T $nav[$k] }
     $txt = @{
         TxtRestart = 'restart.banner'; GDiskT = 'home.disk'; GRamT = 'home.ram'; GCpuT = 'home.cpu'; InfVpnT = 'home.vpn'; InfUpT = 'home.uptime'
         InfFreedT = 'home.freed'; QuickT = 'home.quick'; TxtTip = 'home.tip'; TxtAgeT = 'clean.age.t'; TxtAgeD = 'clean.age.d'
-        SpecT = 'spec.title'; SetFlickerT = 'set.flicker.t'; SetFlickerD = 'set.flicker.d'; SetLangT = 'set.lang'; SetThemeT = 'set.theme'; SetAutoT = 'set.auto.t'; SetAutoD = 'set.auto.d'; AboutT = 'about.t'
+        SpecT = 'spec.title'; SetFlickerT = 'set.flicker.t'; SetFlickerD = 'set.flicker.d'; SetAutoUpdT = 'set.autoupd.t'; SetAutoUpdD = 'set.autoupd.d'; PaletteHint = 'pal.hint'; SetLangT = 'set.lang'; SetThemeT = 'set.theme'; SetAutoT = 'set.auto.t'; SetAutoD = 'set.auto.d'; AboutT = 'about.t'
     }
     foreach ($k in $txt.Keys) { $UI[$k].Text = T $txt[$k] }
     $UI.AboutD.Text = (T 'about.d') -f $AppVersion
@@ -222,7 +234,7 @@ function Set-AllTexts {
         BtnQuickClean = 'home.btn.clean'; BtnQuickTweaks = 'home.btn.tweaks'; BtnQuickRestore = 'home.btn.restore'; BtnQuickClassic = 'home.btn.net'
         BtnScan = 'clean.btn.scan'; BtnClean = 'clean.btn.clean'; BtnCleanDefaults = 'clean.btn.defaults'
         BtnRec = 'tw.btn.rec'; BtnRestoreAll = 'tw.btn.restore'; BtnExplorer = 'tw.btn.explorer'
-        BtnShortcut = 'set.btn.shortcut'; BtnLogs = 'set.btn.logs'; BtnUpdate = 'set.btn.update'; BtnClassic = 'set.btn.classic'; BtnGithub = 'about.github'; BtnCopySpecs = 'spec.copy'
+        BtnShortcut = 'set.btn.shortcut'; BtnLogs = 'set.btn.logs'; BtnUpdate = 'set.btn.update'; BtnClassic = 'set.btn.classic'; BtnGithub = 'about.github'; BtnCopySpecs = 'spec.copy'; BtnSearch = 'pal.btn'
     }
     foreach ($k in $btn.Keys) { $UI[$k].Content = T $btn[$k] }
     if ($UI.LogList.Visibility -eq 'Visible') { $UI.BtnLog.Content = T 'log.hide' } else { $UI.BtnLog.Content = T 'log.show' }

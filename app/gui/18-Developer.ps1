@@ -37,7 +37,7 @@ function Build-PathTab {
         if (-not (Confirm-Box ((T 'path.confirm') -f $keys.Count))) { return }
         foreach ($scope in 'Machine', 'User') {
             $idx = @($keys | Where-Object { $_ -like "$scope|*" } | ForEach-Object { [int]($_ -split '\|')[1] })
-            if ($idx.Count -gt 0) { [void](Set-CleanPath $scope $idx) }
+            if ($idx.Count -gt 0) { $bk = Set-CleanPath $scope $idx; if ($bk) { [void](Add-History 'path' 'hist.path' @($idx.Count, (T "path.scope.$($scope.ToLower())")) @{ Type = 'path'; Backup = "$bk" }) } }
         }
         $App.PathSel = $null; Set-DevMsg ((T 'path.done') -f $keys.Count); Build-DevBody
     })
@@ -156,7 +156,9 @@ function Build-DnsTab {
     $b1.Add_Click({
         if (-not $App.DnsPick) { Show-Info (T 'dns.pick'); return }
         if (-not (Confirm-Box ((T 'dns.confirm') -f (T "dns.p.$($App.DnsPick)")))) { return }
-        $n = Set-DnsPreset $App.DnsPick; Set-DevMsg ((T 'dns.done') -f (T "dns.p.$($App.DnsPick)"), $n); Build-DevBody
+        $r = Set-DnsPreset $App.DnsPick; $n = $r.Count
+        if ($n -gt 0) { [void](Add-History 'dns' 'hist.dns' @((T "dns.p.$($App.DnsPick)")) @{ Type = 'dns'; Before = @($r.Before) }) }
+        Set-DevMsg ((T 'dns.done') -f (T "dns.p.$($App.DnsPick)"), $n); Build-DevBody
     }); [void]$bw.Children.Add($b1)
     $b2 = New-Button (T 'dns.measure') 'Secondary'; $b2.Margin = '0,0,10,8'
     $b2.Add_Click({ Start-Task 'dns.measuring' 'Measure-DnsPresets' @{} { param($TK); if ($TK.Result) { $App.DnsTimes = $TK.Result }; Build-DevBody } }); [void]$bw.Children.Add($b2)

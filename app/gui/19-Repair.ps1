@@ -16,7 +16,7 @@ function Add-ActionCard($panel, [string]$tKey, [string]$dKey, [string]$aKey, $bu
 function Build-RepairList {
     $p = $UI.RepairList; $p.Children.Clear()
     $b1 = New-Button (T 'rep.wu.btn') 'Primary'
-    $b1.Add_Click({ if (Confirm-Box (T 'rep.wu.confirm')) { Start-Task 'rep.wu.t' 'Repair-WindowsUpdate' @{} { param($TK); if ($TK.Result -and $TK.Result.Ok) { Show-Info (T 'rep.wu.after') } } } })
+    $b1.Add_Click({ if (Confirm-Box (T 'rep.wu.confirm')) { Start-Task 'rep.wu.t' 'Repair-WindowsUpdate' @{} { param($TK); if ($TK.Result -and $TK.Result.Ok) { [void](Add-History 'repair' 'hist.wurepair'); Show-Info (T 'rep.wu.after') } } } })
     $b2 = New-Button (T 'rep.wu.open') 'Secondary'; $b2.Add_Click({ Start-Process 'ms-settings:windowsupdate' })
     Add-ActionCard $p 'rep.wu.t' 'rep.wu.d' 'rep.wu.a' @($b1, $b2)
 
@@ -25,7 +25,7 @@ function Build-RepairList {
     Add-ActionCard $p 'rep.sys.t' 'rep.sys.d' 'rep.sys.a' @($b3)
 
     $b4 = New-Button (T 'rep.rp.btn') 'Primary'
-    $b4.Add_Click({ Start-Task 'rep.rp.t' 'New-RestorePointCore' @{} $null })
+    $b4.Add_Click({ Start-Task 'rep.rp.t' 'New-RestorePointCore' @{} { param($TK); if ($TK.Result) { [void](Add-History 'repair' 'hist.restorepoint') } } })
     $b5 = New-Button (T 'rep.rp.open') 'Secondary'; $b5.Add_Click({ Start-Process 'rstrui.exe' })
     Add-ActionCard $p 'rep.rp.t' 'rep.rp.d' 'rep.rp.a' @($b4, $b5)
 

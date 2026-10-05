@@ -29,6 +29,9 @@ A friendly, portable toolkit with a neon dark/light interface. No installation, 
 | ✨ **Neon sign** | A half-broken flickering neon "Welcome" sign on Home (can be turned off). |
 | 🔄 **Automation** | Optional weekly background cleanup, desktop shortcut, update check. |
 | 🖥️ **Your PC** | Full specs at a glance (CPU, RAM, GPU, disks, BIOS, TPM...) with one-click copy. VPN status for Mullvad, NordVPN, Proton, ExpressVPN, Surfshark and many more. |
+| 🔎 **Search (Ctrl+K)** | Type to jump to any page, setting, theme or action, in any language. |
+| 🕘 **History & undo** | Every change is recorded; settings, startup apps, PATH, DNS, power plan, leftovers and more can be undone with one click. |
+| ⬆️ **Updates itself** | Checks GitHub once a day; one click downloads, verifies (SHA-256) and installs the new version, keeping your settings. |
 | 🧑‍💻 **Developer tools** | PATH cleaner with backup, "who uses port X", DNS switcher with speed test. |
 | 🩺 **Diagnostics** | Crash history explained, problem devices and drivers, Windows Update history/pending/hide with explained error codes. |
 | 📤 **Uninstaller & duplicates** | Uninstall programs and remove what they leave behind; find identical files by content. |

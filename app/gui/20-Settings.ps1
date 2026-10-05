@@ -29,4 +29,5 @@ function Build-SettingsPage {
     }
     $UI.ChkAuto.IsChecked = Test-AutoClean
     $UI.ChkFlicker.IsChecked = [bool]$App.Settings.flicker
+    $UI.ChkAutoUpdate.IsChecked = ($App.Settings.autoUpdate -ne $false)
 }

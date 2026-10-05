@@ -47,7 +47,7 @@ $Themes = [ordered]@{
 }
 
 # ---------- Πλοήγηση ----------
-$Pages = [ordered]@{ Home = 'PageHome'; Clean = 'PageClean'; Tweaks = 'PageTweaks'; Apps = 'PageApps'; Net = 'PageNet'; Security = 'PageSecurity'; Diag = 'PageDiag'; Dev = 'PageDev'; Repair = 'PageRepair'; Tools = 'PageTools'; Settings = 'PageSettings' }
+$Pages = [ordered]@{ Home = 'PageHome'; Clean = 'PageClean'; Tweaks = 'PageTweaks'; Apps = 'PageApps'; Net = 'PageNet'; Security = 'PageSecurity'; Diag = 'PageDiag'; Dev = 'PageDev'; Repair = 'PageRepair'; Tools = 'PageTools'; History = 'PageHistory'; Settings = 'PageSettings' }
 
 # ---------- Ρυθμίσεις Windows ----------
 $Win11Only = @('classicmenu', 'endtask', 'windowed')

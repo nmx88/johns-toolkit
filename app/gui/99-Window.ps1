@@ -31,6 +31,7 @@ function New-MainWindow([string]$xaml) {
     $UI.NavApps.Add_Checked({ Show-Page 'Apps' })
     $UI.NavSecurity.Add_Checked({ Show-Page 'Security' })
     $UI.NavNet.Add_Checked({ Show-Page 'Net' })
+    $UI.NavHistory.Add_Checked({ Show-Page 'History' })
     $UI.NavDiag.Add_Checked({ Show-Page 'Diag' })
     $UI.NavDev.Add_Checked({ Show-Page 'Dev' })
     $UI.NavRepair.Add_Checked({ Show-Page 'Repair' })
@@ -39,7 +40,19 @@ function New-MainWindow([string]$xaml) {
 
     $UI.BtnQuickClean.Add_Click({ $UI.NavClean.IsChecked = $true; Start-Clean -Defaults })
     $UI.BtnQuickTweaks.Add_Click({ $UI.NavTweaks.IsChecked = $true })
-    $UI.BtnQuickRestore.Add_Click({ Start-Task 'rep.rp.t' 'New-RestorePointCore' @{} $null })
+    $UI.BtnQuickRestore.Add_Click({ Start-Task 'rep.rp.t' 'New-RestorePointCore' @{} { param($TK); if ($TK.Result) { [void](Add-History 'repair' 'hist.restorepoint') } } })
+    # Search (Ctrl+K)
+    $UI.BtnSearch.Add_Click({ Show-Palette })
+    $UI.PaletteBox.Add_TextChanged({ $App.PalSel = 0; Update-PaletteResults })
+    $UI.Palette.Add_MouseLeftButtonDown({ param($src, $e) if ($e.OriginalSource -eq $UI.Palette) { Hide-Palette } })
+    $Win.Add_PreviewKeyDown({
+        param($src, $e)
+        if ("$($e.Key)" -eq 'K' -and ([System.Windows.Input.Keyboard]::Modifiers -band [System.Windows.Input.ModifierKeys]::Control)) { Show-Palette; $e.Handled = $true; return }
+        if ($UI.Palette.Visibility -eq 'Visible') { Invoke-PaletteKey $e }
+    })
+    # Update
+    $UI.BtnUpdateBanner.Add_Click({ Show-AppUpdateOffer })
+    $UI.ChkAutoUpdate.Add_Click({ $App.Settings.autoUpdate = [bool]$UI.ChkAutoUpdate.IsChecked; Save-AppSettings $App.Settings })
     $UI.BtnQuickClassic.Add_Click({ $UI.NavNet.IsChecked = $true })
     $UI.BtnCopySpecs.Add_Click({ Copy-Specs })
 
@@ -50,14 +63,16 @@ function New-MainWindow([string]$xaml) {
     $UI.BtnCleanDefaults.Add_Click({ foreach ($c in Get-CleanCategories) { $App.CleanSel[$c.Id] = [bool]$c.Def }; Build-CleanList })
 
     $UI.BtnRec.Add_Click({
-        $n = 0
-        foreach ($t in (Get-VisibleTweaks | Where-Object { $_.Recommended })) { if (-not (Get-TweakState $t)) { Set-Tweak $t $true; $n++ } }
+        $n = 0; $changed = @()
+        foreach ($t in (Get-VisibleTweaks | Where-Object { $_.Recommended })) { if (-not (Get-TweakState $t)) { Set-Tweak $t $true; $n++; $changed += @{ Id = $t.Id; Was = $false } } }
+        if ($n -gt 0) { [void](Add-History 'tweak' 'hist.rec' @($n) @{ Type = 'tweaks'; Items = $changed }) }
         Build-TweakList
         if ($n -gt 0) { $UI.TxtTweakMsg.Text = (T 'tw.rec.done') -f $n; $App.NeedsRestart = $true; $UI.RestartBanner.Visibility = 'Visible' } else { $UI.TxtTweakMsg.Text = T 'tw.rec.none' }
     })
     $UI.BtnRestoreAll.Add_Click({
         if (-not (Confirm-Box (T 'tw.restore.confirm'))) { return }
         $n = Restore-AllTweaks
+        if ($n -gt 0) { [void](Add-History 'tweak' 'hist.restoreall' @($n)) }
         Build-TweakList
         if ($n -gt 0) { $UI.TxtTweakMsg.Text = T 'tw.restore.done'; $App.NeedsRestart = $true; $UI.RestartBanner.Visibility = 'Visible' } else { $UI.TxtTweakMsg.Text = T 'tw.restore.none' }
     })
@@ -79,15 +94,7 @@ function New-MainWindow([string]$xaml) {
     $UI.BtnLogs.Add_Click({ New-Item -ItemType Directory -Path $CoreLogs -Force | Out-Null; Start-Process explorer.exe -ArgumentList "`"$CoreLogs`"" })
     $UI.BtnClassic.Add_Click({ Start-Classic })
     $UI.BtnGithub.Add_Click({ Start-Process ("https://github.com/" + (Get-RepoSlug)) })
-    $UI.BtnUpdate.Add_Click({
-        Start-Task 'set.update.checking' 'Test-NewVersion' @{} {
-            param($TK)
-            $r = $TK.Result
-            if (-not $r -or -not $r.Ok) { Show-Info (T 'set.update.fail'); return }
-            if ($r.Newer) { if (Confirm-Box ((T 'set.update.new') -f $r.Latest)) { Start-Process $r.Url } }
-            else { Show-Info ((T 'set.update.latest') -f $AppVersion) }
-        }
-    })
+    $UI.BtnUpdate.Add_Click({ Start-AppUpdateCheck })
     $UI.BtnLog.Add_Click({
         if ($UI.LogList.Visibility -eq 'Visible') { $UI.LogList.Visibility = 'Collapsed'; $UI.BtnLog.Content = T 'log.show' }
         else { $UI.LogList.Visibility = 'Visible'; $UI.BtnLog.Content = T 'log.hide' }
@@ -114,6 +121,7 @@ function New-MainWindow([string]$xaml) {
         $App.Shown = $true
         Write-GuiStage 'window shown'
         if (-not $App.SpecsLang) { $App.SpecsLang = $script:LangCode; Start-SpecsScan }
+        if (Test-UpdateCheckDue) { Start-AppUpdateCheck -Quiet }   # once a day, silent, waits behind the specs scan
     })
 
     # ---------- Εκκίνηση ----------

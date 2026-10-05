@@ -33,9 +33,11 @@ function Build-TweakList {
             $id = [string]$this.Tag; $tw = $Tweaks | Where-Object { $_.Id -eq $id } | Select-Object -First 1
             if (-not $tw) { return }
             $on = [bool]$this.IsChecked
+            $was = [bool](Get-TweakState $tw)
             Set-Tweak $tw $on
             $this.IsChecked = [bool](Get-TweakState $tw)
             $name = Get-TweakText $tw 'l'
+            if ([bool]$this.IsChecked -ne $was) { [void](Add-History 'tweak' $(if ($on) { 'hist.tweak.on' } else { 'hist.tweak.off' }) @($name) @{ Type = 'tweaks'; Items = @(@{ Id = $tw.Id; Was = $was }) }) }
             if ($on) { $UI.TxtTweakMsg.Text = (T 'tw.on') -f $name } else { $UI.TxtTweakMsg.Text = (T 'tw.off') -f $name }
             if ($tw.Restart -and $tw.Restart -ne 'explorer') { $App.NeedsRestart = $true; $UI.RestartBanner.Visibility = 'Visible' }
         })
@@ -66,8 +68,11 @@ function Add-PowerCard {
     foreach ($pl in @('balanced', 'high', 'ultimate')) {
         $rb = New-Pill (T "pw.$pl") $pl 'power' ($pl -eq $cur)
         $rb.Add_Checked({
-            $which = [string]$this.Tag
-            if (Set-PowerPlanCore $which) { $UI.TxtTweakMsg.Text = (T 'pw.ok') -f (T "pw.$which") } else { $UI.TxtTweakMsg.Text = T 'pw.fail' }
+            $which = [string]$this.Tag; $before = Get-ActivePlanGuid
+            if (Set-PowerPlanCore $which) {
+                $UI.TxtTweakMsg.Text = (T 'pw.ok') -f (T "pw.$which")
+                if ($before -and $before -ne (Get-ActivePlanGuid)) { [void](Add-History 'power' 'hist.power' @((T "pw.$which")) @{ Type = 'power'; Guid = $before }) }
+            } else { $UI.TxtTweakMsg.Text = T 'pw.fail' }
         })
         [void]$wp.Children.Add($rb)
     }

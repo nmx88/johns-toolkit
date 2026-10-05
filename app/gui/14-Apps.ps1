@@ -45,6 +45,7 @@ function Build-StartupList {
         $sw.Add_Click({
             $en = $App.StartupEntries[[int]$this.Tag]; $on = [bool]$this.IsChecked
             Set-StartupEnabled $en $on
+            [void](Add-History 'startup' $(if ($on) { 'hist.startup.on' } else { 'hist.startup.off' }) @($en.Name) @{ Type = 'startup'; Name = "$($en.Name)"; Was = (-not $on) })
             Write-AppLog "Startup: $($en.Name) -> $on"
             if ($on) { Set-AppsMsg ((T 'st.on') -f $en.Name) } else { Set-AppsMsg ((T 'st.off') -f $en.Name) }
         })
@@ -128,6 +129,7 @@ function Start-UpdateRun {
         $r = $TK.Result; if (-not $r) { return }
         $m = (T 'upd.result') -f $r.Ok, @($r.Fail).Count
         if (@($r.Fail).Count -gt 0) { Set-AppsMsg $m 'WarnBrush' } else { Set-AppsMsg $m }
+        if ($r.Ok -gt 0) { [void](Add-History 'updates' 'hist.updates' @($r.Ok)) }
         Send-Toast $AppName $m
         Start-UpdateScan
     }
@@ -136,6 +138,7 @@ function Start-UpdateRun {
 function Start-PinChange([string]$id, [bool]$pin) {
     Start-Task 'upd.pinning' 'Set-PinCore $TK.Args.Id $TK.Args.Pin' @{ Id = $id; Pin = $pin } {
         param($TK)
+        if ($TK.Result -eq 0) { [void](Add-History 'pin' $(if ($TK.Args.Pin) { 'hist.pin' } else { 'hist.unpin' }) @($TK.Args.Id) @{ Type = 'pin'; Id = $TK.Args.Id; Pinned = [bool]$TK.Args.Pin }) }
         if ($TK.Result -eq 0) { if ($TK.Args.Pin) { Set-AppsMsg ((T 'upd.frozen') -f $TK.Args.Id) } else { Set-AppsMsg ((T 'upd.unfrozen') -f $TK.Args.Id) }; Start-UpdateScan }
         else { Set-AppsMsg (T 'upd.pinfail') 'WarnBrush' }
     }
@@ -183,7 +186,7 @@ function Start-BloatRemove {
     $items = @($sel | ForEach-Object { @{ Pkg = $_.Pkg; Name = $_.Name } })
     Start-Task 'bl.running' 'Remove-BloatCore $TK.Args.Items' @{ Items = $items } {
         param($TK)
-        if ($TK.Result) { Set-AppsMsg ((T 'bl.done') -f $TK.Result.Removed) }
+        if ($TK.Result) { Set-AppsMsg ((T 'bl.done') -f $TK.Result.Removed); if ($TK.Result.Removed -gt 0) { [void](Add-History 'apps' 'hist.bloat' @($TK.Result.Removed)) } }
         $App.Bloat = $null; $App.BloatSel = @{}; Build-AppsBody
     }
 }
@@ -216,7 +219,7 @@ function Build-UninstallTab {
                 $sel = @($App.UnLeft.Items | Where-Object { $_ -and $App.UnLeftSel["$($_.Path)"] })
                 if ($sel.Count -eq 0) { Show-Info (T 'lo.none.sel'); return }
                 if (-not (Confirm-Box ((T 'un.left.confirm') -f $sel.Count))) { return }
-                Start-Task 'un.left.removing' 'Remove-AppLeftovers $TK.Args.Items' @{ Items = $sel } { param($TK); if ($TK.Result) { Set-AppsMsg ((T 'un.left.result') -f $TK.Result.Ok) }; $App.UnLeft = $null; Build-AppsBody }
+                Start-Task 'un.left.removing' 'Remove-AppLeftovers $TK.Args.Items' @{ Items = $sel } { param($TK); if ($TK.Result) { Set-AppsMsg ((T 'un.left.result') -f $TK.Result.Ok); if ($TK.Result.Ok -gt 0) { [void](Add-History 'recycle' 'hist.unleft' @($TK.Result.Ok) @{ Type = 'recyclebin' }) } }; $App.UnLeft = $null; Build-AppsBody }
             }); [void]$bw.Children.Add($b)
         }
         $x = New-Button (T 'un.left.skip') 'Secondary'; $x.Add_Click({ $App.UnLeft = $null; Build-AppsBody }); [void]$bw.Children.Add($x)

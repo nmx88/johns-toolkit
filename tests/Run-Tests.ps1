@@ -144,6 +144,33 @@ $guiNoStart = $guiText
 . ([scriptblock]::Create($classicEngine + "`r`n" + $coreText + "`r`n" + $guiNoStart))
 Add-Result 'load' "Engine + window code loaded ($($guiFiles.Count) window files)" 'pass'
 
+Invoke-Check 'logic' 'Change history: add, newest first, undo (in a temporary folder)' {
+    $keep = $CoreData; $script:CoreData = Join-Path ([IO.Path]::GetTempPath()) ('jt-test-' + [guid]::NewGuid().ToString('N'))
+    try {
+        function Set-Tweak($t, $on) { $script:UndoCalls += "$($t.Id)=$on" }   # stand-in, only inside this check
+        $script:UndoCalls = @()
+        $a = Add-History 'cleanup' 'hist.cleanup' @('1 GB')
+        $b = Add-History 'tweak' 'hist.tweak.on' @('X') @{ Type = 'tweaks'; Items = @(@{ Id = $Tweaks[0].Id; Was = $false }) }
+        $list = @(Get-ChangeHistory)
+        if ($list.Count -ne 2 -or $list[0].Id -ne $b.Id) { return "FAIL:expected 2 entries, newest first (got $($list.Count))" }
+        $r = Invoke-HistoryUndoCore $b.Id
+        if (-not $r.Ok -or $script:UndoCalls -notcontains "$($Tweaks[0].Id)=False") { return "FAIL:undo did not restore the setting ($($script:UndoCalls -join ','))" }
+        $after = @(Get-ChangeHistory)
+        if (-not ($after | Where-Object { $_.Id -eq $b.Id }).Undone -or $after[0].Kind -ne 'undo') { return 'FAIL:entry not marked undone / no undo entry' }
+        if ((Invoke-HistoryUndoCore $a.Id).Ok) { return 'FAIL:an entry without undo data was "undone"' }
+        "$($after.Count) entries, undo works"
+    } finally { Remove-Item -LiteralPath $CoreData -Recurse -Force -ErrorAction SilentlyContinue; $script:CoreData = $keep }
+} -OnlyExceptions
+Invoke-Check 'logic' 'Update: picks the right download and refuses to update a git checkout' {
+    $assets = @([pscustomobject]@{ Name = 'JohnsToolkit-v9.9.9.zip' }, [pscustomobject]@{ Name = 'JohnsToolkit-v9.9.9-with-exe.zip' }, [pscustomobject]@{ Name = 'SHA256SUMS.txt' })
+    $a = Select-UpdateAsset $assets
+    $exeHere = Test-Path -LiteralPath (Join-Path $AppRoot 'JohnsToolkit.exe')
+    if ($exeHere -and $a.Name -notlike '*-with-exe.zip') { return "FAIL:with JohnsToolkit.exe present it chose $($a.Name)" }
+    if (-not $exeHere -and $a.Name -like '*-with-exe.zip') { return "FAIL:without JohnsToolkit.exe it chose $($a.Name)" }
+    if (Test-GitCheckout) { $r = Install-AppUpdate ([pscustomobject]@{ Latest = '9.9.9'; Assets = $assets }); if ($r.Ok -or $r.Why -ne 'git') { return 'FAIL:a git checkout would have been overwritten' }; return "chose $($a.Name); git checkout protected" }
+    "chose $($a.Name)"
+} -OnlyExceptions
+
 # ---------------------------------------------------------------- safe stand-ins
 $script:Calls = [System.Collections.ArrayList]::new(); $script:Tasks = [System.Collections.ArrayList]::new()
 function Rec([string]$w) { [void]$script:Calls.Add($w) }
@@ -172,6 +199,11 @@ function Restore-PathBackup($f) { 'User' }
 function Set-DnsPreset($p) { 1 }
 function Set-WuHidden($i, $h) { $true }
 function Write-AppLog { }
+function Add-History { }
+function Save-ChangeHistory { }
+$script:FixHistory = @()
+function Get-ChangeHistory { $script:FixHistory }
+function Start-AppUpdater { }
 function Write-GuiStage { }
 
 if (-not $OnWindows) {
@@ -286,6 +318,9 @@ function Set-Fixtures {
     $App.Wu = @{ Pending = @([pscustomobject]@{ Title = 'Feature update'; KB = 'KB1'; Id = 'a'; Size = 3GB; Cat = 'Upgrades'; Downloaded = $false }); Hidden = @(); History = @([pscustomobject]@{ Title = 'Windows 11 26H2'; Date = (Get-Date); Result = 4; HResult = '0x80070490' }) }
     $App.PortNum = 135; $App.PortRes = @([pscustomobject]@{ PID = 999999; Name = 'svchost'; Path = ''; Services = @('RpcSs'); States = 'TCP Listen'; Lines = @() })
     $App.DnsTimes = [ordered]@{ cloudflare = 11; quad9 = -1 }; $App.DnsPick = 'quad9'; $App.Speed = $null
+    $script:FixHistory = @([pscustomobject]@{ Id = 'a1'; When = (Get-Date).ToString('s'); Kind = 'tweak'; Key = 'hist.tweak.on'; A = @('Show file extensions'); Undo = [pscustomobject]@{ Type = 'tweaks'; Items = @() }; Undone = $false },
+        [pscustomobject]@{ Id = 'a2'; When = (Get-Date).AddDays(-1).ToString('s'); Kind = 'recycle'; Key = 'hist.dupes'; A = @('3'); Undo = [pscustomobject]@{ Type = 'recyclebin' }; Undone = $false },
+        [pscustomobject]@{ Id = 'a3'; When = (Get-Date).AddDays(-2).ToString('s'); Kind = 'cleanup'; Key = 'hist.cleanup'; A = @('2 GB'); Undo = $null; Undone = $false })
 }
 # Every page and sub-tab, with the function that builds it
 $Views = [ordered]@{
@@ -296,9 +331,9 @@ $Views = [ordered]@{
     'Network' = { Show-Page 'Net'; Build-NetPage }; 'Security' = { Show-Page 'Security'; Build-SecurityPage }
     'Diagnostics-crashes' = { $App.DiagTab = 'crash'; Show-Page 'Diag'; Build-DiagPage }; 'Diagnostics-devices' = { $App.DiagTab = 'devices'; Show-Page 'Diag'; Build-DiagPage }; 'Diagnostics-update' = { $App.DiagTab = 'wu'; Show-Page 'Diag'; Build-DiagPage }
     'Developer-path' = { $App.DevTab = 'path'; Show-Page 'Dev'; Build-DevPage }; 'Developer-ports' = { $App.DevTab = 'ports'; Show-Page 'Dev'; Build-DevPage }; 'Developer-dns' = { $App.DevTab = 'dns'; Show-Page 'Dev'; Build-DevPage }
-    'Repair' = { Show-Page 'Repair' }; 'Settings' = { Show-Page 'Settings' }
+    'Repair' = { Show-Page 'Repair' }; 'History' = { Show-Page 'History' }; 'Settings' = { Show-Page 'Settings' }
 }
-$PageRoot = @{ 'Home' = 'PageHome'; 'Cleanup' = 'PageClean'; 'WindowsSettings' = 'PageTweaks'; 'Apps' = 'PageApps'; 'Network' = 'PageNet'; 'Security' = 'PageSecurity'; 'Diagnostics' = 'PageDiag'; 'Developer' = 'PageDev'; 'Repair' = 'PageRepair'; 'Settings' = 'PageSettings' }
+$PageRoot = @{ 'Home' = 'PageHome'; 'Cleanup' = 'PageClean'; 'WindowsSettings' = 'PageTweaks'; 'Apps' = 'PageApps'; 'Network' = 'PageNet'; 'Security' = 'PageSecurity'; 'Diagnostics' = 'PageDiag'; 'Developer' = 'PageDev'; 'Repair' = 'PageRepair'; 'History' = 'PageHistory'; 'Settings' = 'PageSettings' }
 function Get-ViewRoot([string]$v) {
     if ($RealWpf) { return $UI[$PageRoot[($v -split '-')[0]]] }
     $r = [Windows.Controls.StackPanel]::new(); $r.Items.Loose = $true; foreach ($x in $UI.Values) { [void]$r.Items.Add($x) }; return $r   # stand-in: elements are not nested
@@ -317,6 +352,30 @@ foreach ($jtTestLang in 'en', 'el', 'de', 'it', 'fr', 'es') {
     }
 }
 Set-AppLanguage 'en'; Set-AllTexts
+
+# 4a+) Search (Ctrl+K)
+Invoke-Check 'search' 'Search: every entry, accents ignored, English works in Greek, numbers find ports' {
+    Set-AppLanguage 'el'; Set-AllTexts
+    $all = @(Get-PaletteEntries ''); if ($all.Count -lt 60) { return "FAIL:only $($all.Count) entries" }
+    $find = { param($q) $UI.PaletteBox.Text = $q; $App.PalSel = 0; Update-PaletteResults; @($App.PalItems) }
+    $r1 = & $find 'θυρες'; if (-not ($r1 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'θυρες' (no accent) did not find the Ports tab" }
+    $r2 = & $find 'ports'; if (-not ($r2 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'ports' (English) did not find the Ports tab in Greek" }
+    $r3 = & $find '5432'; if ($r3.Count -lt 1 -or $r3[0].Label -notlike '*5432*') { return "FAIL:'5432' did not offer the port lookup first" }
+    $r4 = & $find 'synthwave'; if (-not ($r4 | Where-Object { $_.Label -like '*Synthwave*' })) { return "FAIL:'synthwave' did not find the theme" }
+    $r5 = & $find 'zzzqqq'; if ($r5.Count -ne 0) { return 'FAIL:nonsense found something' }
+    Set-AppLanguage 'en'; Set-AllTexts
+    "$($all.Count) entries"
+} -OnlyExceptions
+Invoke-Check 'search' 'Search: every result runs without errors' {
+    $UI.PaletteBox.Text = ''; $all = @(Get-PaletteEntries '5432'); $bad = @()
+    foreach ($e in $all) {
+        Set-Fixtures; $Error.Clear(); $script:Tasks.Clear()
+        try { & $e.Run } catch { $bad += "$($e.Label): $($_.Exception.Message)" }
+        foreach ($x in @($Error | Where-Object { "$($_.FullyQualifiedErrorId) $($_.Exception.GetType().Name)" -notmatch $IgnoredErrors })) { $bad += "$($e.Label): line $($x.InvocationInfo.ScriptLineNumber) $($x.Exception.Message)" }
+    }
+    Set-AppLanguage 'en'; $App.Settings.lang = 'en'; Set-AllTexts; Set-Fixtures
+    if ($bad) { 'FAIL:' + (($bad | Select-Object -First 4) -join ' | ') } else { "$($all.Count) results run" }
+} -OnlyExceptions
 
 # 4b) every button, switch and tab on every page (with the safe stand-ins)
 foreach ($v in $Views.Keys) {
@@ -342,10 +401,24 @@ if ($RealWpf) {
     $shots = Join-Path $OutDir 'screens'
     # the click test pressed the language and theme buttons too: start from English and the default theme
     Set-AppLanguage 'en'; $App.Settings.lang = 'en'; Set-AllTexts
+    $App.NeedsRestart = $false; $UI.RestartBanner.Visibility = 'Collapsed'   # set by the click test, not by the app
     Set-Theme 'dark'
     foreach ($v in $Views.Keys) {
         Invoke-Check 'screens' "Screenshot: dark / $v" { Set-Fixtures; & $Views[$v]; Set-SignStatic; Save-Screenshot (Join-Path $shots "dark\$v.png") } -OnlyExceptions
     }
+    Invoke-Check 'screens' 'Neon sign is not clipped (every letter fits its cell, the sign fits its space)' {
+        Show-Page 'Home'; Set-SignStatic
+        $root = $Win.Content; $root.Measure([System.Windows.Size]::new(1280, 860)); $root.Arrange([System.Windows.Rect]::new(0, 0, 1280, 860)); $root.UpdateLayout()
+        $bad = @()
+        foreach ($cell in @($App.SignLetters)) {
+            if ($cell -is [System.Windows.Controls.Grid]) {
+                foreach ($pth in @($cell.Children)) { $b = $pth.Data.Bounds; if ($b.Bottom -gt $cell.Height -or $b.Right -gt $cell.Width) { $bad += ('letter {0:0}x{1:0} in cell {2:0}x{3:0}' -f $b.Right, $b.Bottom, $cell.Width, $cell.Height) } }
+            }
+        }
+        $s = $UI.NeonSign
+        if ($s.ActualHeight + 0.5 -lt $s.DesiredSize.Height -or $s.ActualWidth + 0.5 -lt $s.DesiredSize.Width) { $bad += ('sign {0:0}x{1:0} needs {2:0}x{3:0}' -f $s.ActualWidth, $s.ActualHeight, $s.DesiredSize.Width, $s.DesiredSize.Height) }
+        if ($bad) { 'FAIL:' + (($bad | Select-Object -First 4) -join '; ') } else { ('sign {0:0}x{1:0}, {2} letters' -f $s.ActualWidth, $s.ActualHeight, @($App.SignLetters).Count) }
+    } -OnlyExceptions
     foreach ($th in @($Themes.Keys)) {
         Invoke-Check 'screens' "Screenshot: $th / Home + Network" {
             Set-Theme $th; Set-Fixtures

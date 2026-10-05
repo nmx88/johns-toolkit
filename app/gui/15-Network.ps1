@@ -31,7 +31,7 @@ function Add-SpeedCard($p) {
         }
     }
     $b = New-Button (T 'sp.run') 'Primary'; $b.HorizontalAlignment = 'Left'; $b.Margin = '0,12,0,0'
-    $b.Add_Click({ Start-Task 'sp.running' 'Invoke-SpeedTest' @{} { param($TK); if ($TK.Result -and $TK.Result.Ok) { $App.Speed = $TK.Result } else { Show-Info (T 'sp.fail') }; Build-NetPage } })
+    $b.Add_Click({ Start-SpeedTest })
     [void]$sp.Children.Add($b)
     $card.Child = $sp; [void]$p.Children.Add($card)
 }
@@ -53,7 +53,7 @@ function Add-NetRepairCard($p) {
     $b2 = New-Button (T 'nr.reset') 'Secondary'; $b2.Margin = '0,0,10,8'
     $b2.Add_Click({
         if (-not (Confirm-Box (T 'nr.reset.confirm'))) { return }
-        Start-Task 'nr.reset' 'Invoke-NetworkReset' @{} { param($TK); $App.NeedsRestart = $true; $UI.RestartBanner.Visibility = 'Visible'; Show-Info (T 'nr.reset.after') }
+        Start-Task 'nr.reset' 'Invoke-NetworkReset' @{} { param($TK); [void](Add-History 'network' 'hist.netreset'); $App.NeedsRestart = $true; $UI.RestartBanner.Visibility = 'Visible'; Show-Info (T 'nr.reset.after') }
     }); [void]$wp.Children.Add($b2)
     $b3 = New-Button (T 'nr.ts') 'Secondary'; $b3.Margin = '0,0,10,8'; $b3.Add_Click({ Start-Process 'ms-settings:troubleshoot' }); [void]$wp.Children.Add($b3)
     [void]$sp.Children.Add($wp)
@@ -237,3 +237,5 @@ function Step-LiveMonitor {
         if ($g.Count -gt 4) { Add-MonLine ((T 'net.mon.more') -f $time, ($g.Count - 4), $pi.Name) 'SubBrush' }
     }
 }
+
+function Start-SpeedTest { Start-Task 'sp.running' 'Invoke-SpeedTest' @{} { param($TK); if ($TK.Result -and $TK.Result.Ok) { $App.Speed = $TK.Result } else { Show-Info (T 'sp.fail') }; Build-NetPage } }

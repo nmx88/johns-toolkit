@@ -2,7 +2,7 @@
 #  John's Toolkit by nmx88 - Core (logic without UI)
 #  Windows 10/11 - https://github.com/nmx88/johns-toolkit
 # ======================================================================
-$AppVersion = '2.5.2'
+$AppVersion = '2.6.0'
 $AppName    = "John's Toolkit"
 $AppAuthor  = 'nmx88'
 if (-not $AppRoot) { $AppRoot = Split-Path -Parent $PSScriptRoot }
@@ -1346,7 +1346,7 @@ function Get-DnsStatus {
     return $out
 }
 function Set-DnsPreset([string]$preset) {
-    $n = 0
+    $before = @(Get-DnsState); $n = 0
     foreach ($a in Get-DnsAdapters) {
         if ($preset -eq 'auto') { Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ResetServerAddresses -ErrorAction SilentlyContinue }
         else { Set-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ServerAddresses $DnsPresets[$preset] -ErrorAction SilentlyContinue }
@@ -1354,7 +1354,7 @@ function Set-DnsPreset([string]$preset) {
     }
     Clear-DnsClientCache -ErrorAction SilentlyContinue
     Write-AppLog "DNS -> $preset ($n adapters)"
-    return $n
+    return @{ Count = $n; Before = $before }
 }
 function Measure-DnsPresets {
     $res = [ordered]@{}; $names = @('www.google.com', 'www.wikipedia.org', 'github.com', 'www.microsoft.com')
@@ -1596,4 +1596,133 @@ function Find-DuplicatesCore([string]$root, [double]$minSize) {
     $wasted = 0.0; foreach ($g in $groups) { $wasted += $g.Wasted }
     Set-TK 100 ((T 'du.done') -f $groups.Count, (Format-Size $wasted)) ''
     return @{ Groups = $top; Total = $groups.Count; Wasted = $wasted; Root = $root; Scanned = $n }
+}
+
+# ======================================================================
+#  v2.6: ΙΣΤΟΡΙΚΟ ΑΛΛΑΓΩΝ ΜΕ ΑΝΑΙΡΕΣΗ, ΑΥΤΟΜΑΤΗ ΕΝΗΜΕΡΩΣΗ
+# ======================================================================
+function Get-HistoryFile { return (Join-Path $CoreData 'history.json') }
+function Get-ChangeHistory {
+    $f = Get-HistoryFile; $out = @()
+    if (Test-Path -LiteralPath $f) { try { foreach ($x in (ConvertFrom-Json ([IO.File]::ReadAllText($f, [Text.Encoding]::UTF8)))) { if ($x.Id) { $out += $x } } } catch {} }
+    return $out
+}
+function Save-ChangeHistory($list) {
+    New-Item -ItemType Directory -Path $CoreData -Force | Out-Null
+    [IO.File]::WriteAllText((Get-HistoryFile), (ConvertTo-Json -InputObject @($list | Select-Object -First 200) -Depth 8), (New-Object System.Text.UTF8Encoding $false))
+}
+# kind: tweak, startup, path, dns, power, leftovers, recycle, apps, updates, pin, wu, cleanup, network, repair...
+# undo: $null (cannot be undone) or a description of how to undo it (see Invoke-HistoryUndoCore)
+function Add-History([string]$kind, [string]$titleKey, $titleArgs = @(), $undo = $null) {
+    $e = [pscustomobject]@{ Id = [guid]::NewGuid().ToString('N'); When = (Get-Date).ToString('s'); Kind = $kind; Key = $titleKey; A = @(@($titleArgs) | ForEach-Object { "$_" }); Undo = $undo; Undone = $false }
+    Save-ChangeHistory (@($e) + @(Get-ChangeHistory))
+    return $e
+}
+function Get-HistoryTitle($e) { $t = T $e.Key; if (@($e.A).Count -gt 0) { try { $t = $t -f @($e.A) } catch {} }; return $t }
+function Invoke-HistoryUndoCore([string]$id) {
+    $list = @(Get-ChangeHistory); $e = $list | Where-Object { $_.Id -eq $id } | Select-Object -First 1
+    if (-not $e -or -not $e.Undo -or $e.Undone) { return @{ Ok = $false } }
+    $u = $e.Undo; $ok = $true
+    Set-TK -1 (T 'hist.undoing') (Get-HistoryTitle $e)
+    switch ("$($u.Type)") {
+        'tweaks' { foreach ($x in @($u.Items)) { $t = $Tweaks | Where-Object { $_.Id -eq $x.Id } | Select-Object -First 1; if ($t) { Set-Tweak $t ([bool]$x.Was) } else { $ok = $false } } }
+        'startup' { $s = @(Get-StartupEntries) | Where-Object { "$($_.Name)" -eq "$($u.Name)" } | Select-Object -First 1; if ($s) { Set-StartupEnabled $s ([bool]$u.Was) } else { $ok = $false } }
+        'path' { if (Test-Path -LiteralPath $u.Backup) { [void](Restore-PathBackup $u.Backup) } else { $ok = $false } }
+        'dns' { Restore-DnsState $u.Before }
+        'power' { powercfg /setactive "$($u.Guid)" | Out-Null; $ok = ((Get-ActivePlanGuid) -eq "$($u.Guid)") }
+        'leftovers' { if (Test-Path -LiteralPath $u.Dir) { $r = Restore-LeftoverBackupCore $u.Dir; $ok = ($r.Fail -eq 0) } else { $ok = $false } }
+        'pin' { $ok = ((Set-PinCore $u.Id (-not [bool]$u.Pinned)) -eq 0) }
+        'wu' { [void](Set-WuHidden $u.Id (-not [bool]$u.Hidden)) }
+        default { $ok = $false }
+    }
+    if ($ok) {
+        $list = @(Get-ChangeHistory); foreach ($x in $list) { if ($x.Id -eq $id) { $x.Undone = $true } }; Save-ChangeHistory $list
+        [void](Add-History 'undo' 'hist.undone' @((Get-HistoryTitle $e)))
+    }
+    Write-AppLog "Undo $($e.Key): $ok"
+    return @{ Ok = $ok; Title = (Get-HistoryTitle $e) }
+}
+
+# DNS: remember what each card had, so it can be put back exactly
+function Get-DnsState {
+    $out = @()
+    foreach ($a in Get-DnsAdapters) {
+        $srv = @(Get-DnsClientServerAddress -InterfaceIndex $a.ifIndex -ErrorAction SilentlyContinue | ForEach-Object { $_.ServerAddresses } | Where-Object { $_ })
+        $auto = $true; try { $auto = ("$((Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\$($a.InterfaceGuid)" -ErrorAction Stop).NameServer)" -eq '') } catch {}
+        $out += [pscustomobject]@{ Index = [int]$a.ifIndex; Auto = $auto; Servers = $srv }
+    }
+    return $out
+}
+function Restore-DnsState($state) {
+    foreach ($s in @($state)) {
+        if ($s.Auto) { Set-DnsClientServerAddress -InterfaceIndex $s.Index -ResetServerAddresses -ErrorAction SilentlyContinue }
+        else { Set-DnsClientServerAddress -InterfaceIndex $s.Index -ServerAddresses @($s.Servers) -ErrorAction SilentlyContinue }
+    }
+    Clear-DnsClientCache -ErrorAction SilentlyContinue
+}
+
+# ---------- Αυτόματη ενημέρωση ----------
+function Test-GitCheckout { return (Test-Path -LiteralPath (Join-Path $AppRoot '.git')) }
+function Get-LatestRelease {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $r = Invoke-RestMethod -Uri "https://api.github.com/repos/$(Get-RepoSlug)/releases/latest" -Headers @{ 'User-Agent' = "JohnsToolkit/$AppVersion" } -TimeoutSec 20 -ErrorAction Stop
+    $latest = "$($r.tag_name)".TrimStart('v', 'V')
+    $newer = $false; try { $newer = ([version]$latest -gt [version]$AppVersion) } catch {}
+    $assets = @($r.assets | ForEach-Object { [pscustomobject]@{ Name = "$($_.name)"; Url = "$($_.browser_download_url)"; Size = [double]$_.size } })
+    return [pscustomobject]@{ Ok = $true; Latest = $latest; Newer = $newer; Url = "$($r.html_url)"; Notes = "$($r.body)"; Assets = $assets }
+}
+function Select-UpdateAsset($assets) {
+    $withExe = Test-Path -LiteralPath (Join-Path $AppRoot 'JohnsToolkit.exe')
+    $zips = @($assets | Where-Object { $_.Name -like 'JohnsToolkit-v*.zip' })
+    if ($withExe) { $a = $zips | Where-Object { $_.Name -like '*-with-exe.zip' } | Select-Object -First 1; if ($a) { return $a } }
+    return ($zips | Where-Object { $_.Name -notlike '*-with-exe.zip' } | Select-Object -First 1)
+}
+function Install-AppUpdate($release) {
+    if (Test-GitCheckout) { return @{ Ok = $false; Why = 'git' } }
+    $asset = Select-UpdateAsset $release.Assets
+    $sums = @($release.Assets | Where-Object { $_.Name -eq 'SHA256SUMS.txt' }) | Select-Object -First 1
+    if (-not $asset -or -not $sums) { return @{ Ok = $false; Why = 'assets' } }
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ('JohnsToolkit-update-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+    $zip = Join-Path $tmp $asset.Name; $sumFile = Join-Path $tmp 'SHA256SUMS.txt'
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $ProgressPreference = 'SilentlyContinue'
+    Set-TK 10 ((T 'upd.app.downloading') -f $release.Latest) $asset.Name
+    Invoke-WebRequest -Uri $asset.Url -OutFile $zip -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
+    Invoke-WebRequest -Uri $sums.Url -OutFile $sumFile -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+    Set-TK 60 (T 'upd.app.verifying') ''
+    $expected = ''
+    foreach ($l in [IO.File]::ReadAllLines($sumFile)) { $p = $l.Trim() -split '\s+', 2; if ($p.Count -eq 2 -and $p[1].Trim() -eq $asset.Name) { $expected = $p[0].ToLower() } }
+    $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLower()
+    if (-not $expected -or $expected -ne $actual) { return @{ Ok = $false; Why = 'hash' } }
+    Set-TK 75 (T 'upd.app.extracting') ''
+    $x = Join-Path $tmp 'x'; Expand-Archive -LiteralPath $zip -DestinationPath $x -Force
+    $src = Join-Path $x 'JohnsToolkit'
+    if (-not (Test-Path -LiteralPath (Join-Path $src 'app\Launcher.ps1'))) { return @{ Ok = $false; Why = 'content' } }
+    # The updater runs after this window closes: it waits for this process, copies the new files
+    # (app, classic, lang, assets are mirrored so removed files disappear; data, logs and reports are never touched)
+    # and starts the new version.
+    $updater = Join-Path $tmp 'Update-JohnsToolkit.ps1'
+    $script = @'
+param([int]$WaitPid, [string]$Src, [string]$Dst)
+$log = Join-Path $Dst 'logs\update.log'
+New-Item -ItemType Directory -Path (Split-Path $log) -Force | Out-Null
+function L($t) { Add-Content -Path $log -Value ("{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $t) -Encoding UTF8 }
+L "update from $Src"
+try { Wait-Process -Id $WaitPid -Timeout 90 -ErrorAction SilentlyContinue } catch {}
+Start-Sleep -Seconds 1
+foreach ($d in 'app', 'classic', 'lang', 'assets') { & robocopy.exe (Join-Path $Src $d) (Join-Path $Dst $d) /MIR /R:3 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null; L "$d -> robocopy $LASTEXITCODE" }
+foreach ($f in Get-ChildItem -LiteralPath $Src -File) { try { Copy-Item -LiteralPath $f.FullName -Destination $Dst -Force -ErrorAction Stop; L "copied $($f.Name)" } catch { L "FAILED $($f.Name): $($_.Exception.Message)" } }
+$exe = Join-Path $Dst 'JohnsToolkit.exe'
+if (Test-Path -LiteralPath $exe) { Start-Process -FilePath $exe }
+else { Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$(Join-Path $Dst 'app\Launcher.ps1')`"" }
+L 'started the new version'
+'@
+    [IO.File]::WriteAllText($updater, $script, (New-Object System.Text.UTF8Encoding $true))
+    Set-TK 100 ((T 'upd.app.ready') -f $release.Latest) ''
+    Write-AppLog "Update v$($release.Latest) downloaded and verified ($($asset.Name))"
+    return @{ Ok = $true; Updater = $updater; Src = $src; Version = $release.Latest }
+}
+function Start-AppUpdater($prep) {
+    Start-Process powershell.exe -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$($prep.Updater)`" -WaitPid $PID -Src `"$($prep.Src)`" -Dst `"$AppRoot`""
 }
