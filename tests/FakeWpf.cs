@@ -17,13 +17,13 @@ namespace Windows.Controls {
   public class FE {
     public object Parent; public string Text; public double FontSize; public object FontWeight, TextWrapping, Margin, Padding, VerticalAlignment, HorizontalAlignment, Foreground, Background, Style, Tag, Content, Orientation, Cursor, ToolTip, Visibility, Fill, Effect, BorderBrush, FontFamily, CornerRadius, BorderThickness, TextTrimming;
     object _child; public object Child { get { return _child; } set { var e=value as FE; if(e!=null){ if(e.Parent!=null) throw new InvalidOperationException("Child already has a parent"); e.Parent=this; } _child=value; } }
-    public bool ClipToBounds; public double Width, Height, Opacity = 1, Value, StrokeThickness; public object Stroke, StrokeLineJoin, Data; public string Title; public bool? IsChecked; public string GroupName; public bool IsEnabled = true;
+    public bool ClipToBounds; public double Width, Height, Opacity = 1, Value, StrokeThickness; public object Stroke, StrokeLineJoin, Data, StrokeStartLineCap, StrokeEndLineCap, Stretch; public string Title; public bool? IsChecked; public string GroupName; public bool IsEnabled = true;
     public ElCollection Children, Items; public Collection<object> RowDefinitions = new Collection<object>(), ColumnDefinitions = new Collection<object>();
     public FE(){ Children = new ElCollection(this); Items = new ElCollection(this); }
     public void SetResourceReference(object dp, object key){ if(key==null) throw new ArgumentNullException("key"); }
     public object SetBinding(object dp, object b){ return null; }
     public void ScrollIntoView(object o){}
-    public event EventHandler Click, Checked, MouseLeftButtonUp, ValueChanged, TextChanged, KeyDown;
+    public event EventHandler Click, Checked, MouseLeftButtonUp, ValueChanged, TextChanged, KeyDown, MouseEnter, MouseLeave, MouseLeftButtonDown, PreviewKeyDown;
     public bool HasHandler(string n){ var f = typeof(FE).GetField(n, System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance); return f != null && f.GetValue(this) != null; }
     public void Raise(string n){ var f = typeof(FE).GetField(n, System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance); var d = f.GetValue(this) as Delegate; if (d != null) d.DynamicInvoke(this, EventArgs.Empty); }
   }
@@ -39,6 +39,7 @@ namespace Windows.Media {
   public class SolidColorBrush { public double Opacity = 1; public SolidColorBrush(Color c){} public void Freeze(){} }
   public class LinearGradientBrush { public LinearGradientBrush(Color a, Color b, double ang){} }
   public class FontFamily { public FontFamily(string s){} }
+  public static class Geometry { public static object Parse(string s){ if (string.IsNullOrEmpty(s)) throw new FormatException("empty geometry"); return new object(); } }
   public class Typeface { public Typeface(FontFamily f, object s, object w, object st){} }
   public class FormattedText { public double WidthIncludingTrailingWhitespace = 30, Height = 60; public FormattedText(string t, System.Globalization.CultureInfo c, System.Windows.FlowDirection d, Typeface tf, double size, object brush){} public FakeGeometry BuildGeometry(System.Windows.Point p){ return new FakeGeometry(); } }
   public class FakeGeometry { public FakeRect Bounds = new FakeRect(); }

@@ -49,14 +49,36 @@ function Get-PaletteEntries([string]$query) {
     # themes and languages
     foreach ($th in @(@($Themes.Keys) + 'auto')) { & $add ((T 'pal.theme') -f (T "theme.$th")) 'pal.sub.theme' "theme $th $(Get-EnglishText "theme.$th")" '' ([scriptblock]::Create("`$App.Settings.theme = '$th'; Save-AppSettings `$App.Settings; Set-Theme '$th'; Build-SettingsPage")) }
     foreach ($lg in $Languages.Keys) { & $add ((T 'pal.lang') -f $Languages[$lg]) 'pal.sub.lang' "language glossa $lg" '' ([scriptblock]::Create("`$App.Settings.lang = '$lg'; Save-AppSettings `$App.Settings; Set-AppLanguage '$lg'; Set-AllTexts")) }
-    # "5432" -> who is using port 5432
-    $n = 0
-    if ([int]::TryParse("$query".Trim(), [ref]$n) -and $n -ge 1 -and $n -le 65535) {
-        $e = [pscustomobject]@{ Label = ((T 'pal.port') -f $n); Sub = (T 'pal.sub.action'); Hay = ''; Run = [scriptblock]::Create("`$App.DevTab = 'ports'; Show-Page 'Dev'; Build-DevPage; Invoke-PortSearch '$n'"); Top = $true }
-        [void]$L.Insert(0, $e)
-    }
     return $L
 }
+function Get-PortSuggestion([string]$query) {
+    $n = 0
+    if (-not [int]::TryParse("$query".Trim(), [ref]$n) -or $n -lt 1 -or $n -gt 65535) { return $null }
+    return [pscustomobject]@{ Label = ((T 'pal.port') -f $n); Sub = (T 'pal.sub.action'); Hay = ''; Run = [scriptblock]::Create("`$App.DevTab = 'ports'; Show-Page 'Dev'; Build-DevPage; Invoke-PortSearch '$n'") }
+}
+# Score of one entry for the typed words (0 = no match). Start of a word in the title counts most;
+# a piece inside another word ("παράθυρα" for "θυρα") counts least; "θυρα" also matches "θυρες" (same stem).
+function Get-PaletteScore($e, [string[]]$words) {
+    if ($words.Count -eq 0) { return 1 }
+    $lab = ConvertTo-SearchText $e.Label
+    $labWords = @($lab -split '[^\p{L}\p{N}]+' | Where-Object { $_ })
+    $hayWords = @($e.Hay -split '[^\p{L}\p{N}]+' | Where-Object { $_ })
+    $total = 0.0
+    foreach ($w in $words) {
+        $stem = $w; if ($w.Length -ge 4) { $stem = $w.Substring(0, $w.Length - 1) }
+        $sc = 0.0
+        if (@($labWords | Where-Object { $_.StartsWith($w) }).Count) { $sc = 10 }
+        elseif (@($labWords | Where-Object { $_.StartsWith($stem) }).Count) { $sc = 8 }
+        elseif (@($hayWords | Where-Object { $_.StartsWith($w) }).Count) { $sc = 5 }
+        elseif (@($hayWords | Where-Object { $_.StartsWith($stem) }).Count) { $sc = 4 }
+        elseif ($lab.Contains($w)) { $sc = 2 }
+        elseif ($e.Hay.Contains($w)) { $sc = 1 }
+        if ($sc -eq 0) { return 0 }
+        $total += $sc
+    }
+    return $total
+}
+
 function Show-Palette {
     $UI.Palette.Visibility = 'Visible'; $App.PalSel = 0
     $UI.PaletteBox.Text = ''
@@ -67,16 +89,11 @@ function Hide-Palette { $UI.Palette.Visibility = 'Collapsed' }
 function Update-PaletteResults {
     $q = "$($UI.PaletteBox.Text)"
     $words = @((ConvertTo-SearchText $q) -split '\s+' | Where-Object { $_ })
-    $all = Get-PaletteEntries $q
-    $hits = @(foreach ($e in $all) {
-        if ($e.Top) { $e | Add-Member -NotePropertyName Rank -NotePropertyValue -1 -Force -PassThru; continue }
-        $ok = $true; foreach ($w in $words) { if (-not $e.Hay.Contains($w)) { $ok = $false; break } }
-        if (-not $ok) { continue }
-        $lab = ConvertTo-SearchText $e.Label; $rank = 2
-        if ($words.Count -gt 0 -and $lab.StartsWith($words[0])) { $rank = 0 } elseif ($words.Count -gt 0 -and $lab.Contains($words[0])) { $rank = 1 }
-        $e | Add-Member -NotePropertyName Rank -NotePropertyValue $rank -Force -PassThru
-    })
-    $App.PalItems = @($hits | Sort-Object Rank | Select-Object -First 12)
+    $scored = foreach ($e in @(Get-PaletteEntries $q)) { $sc = Get-PaletteScore $e $words; if ($sc -gt 0) { [pscustomobject]@{ E = $e; S = $sc; L = $e.Label.Length } } }
+    $items = @(@($scored) | Sort-Object @{ e = 'S'; Descending = $true }, @{ e = 'L'; Descending = $false } | Select-Object -First 12 | ForEach-Object { $_.E })
+    $port = Get-PortSuggestion $q
+    if ($port) { $items = @($port) + @($items | Select-Object -First 11) }
+    $App.PalItems = $items
     if ($App.PalSel -ge $App.PalItems.Count) { $App.PalSel = [Math]::Max(0, $App.PalItems.Count - 1) }
     $UI.PaletteList.Children.Clear()
     if ($App.PalItems.Count -eq 0) { [void]$UI.PaletteList.Children.Add((New-Text (T 'pal.none') 13 'SubBrush')); return }

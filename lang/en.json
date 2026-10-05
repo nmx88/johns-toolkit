@@ -550,7 +550,6 @@
  "hl.battery.btn": "Battery report",
  "hl.restart.btn": "Restart now",
  "hl.restart.confirm": "Restart the PC now? Save your work first.",
- "home.open": "OPEN",
  "theme.vaporwave": "Vaporwave",
  "theme.toxic": "Toxic",
  "theme.ice": "Ice",
@@ -906,5 +905,7 @@
  "upd.app.fail.assets": "The release on GitHub is missing its download files. Try again later or download it from the GitHub page.",
  "upd.app.fail.hash": "The download did not match its SHA-256 checksum, so it was NOT installed. Try again later.",
  "upd.app.fail.content": "The downloaded package looks wrong, so it was NOT installed.",
- "upd.app.fail.other": "The update could not be downloaded. Check your internet connection and try again."
+ "upd.app.fail.other": "The update could not be downloaded. Check your internet connection and try again.",
+ "home.exit": "EXIT",
+ "home.exit.tip": "Close John's Toolkit"
 }

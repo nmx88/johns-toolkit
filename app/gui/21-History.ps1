@@ -35,7 +35,8 @@ function Build-HistoryPage {
                     Start-Task 'hist.undoing' 'Invoke-HistoryUndoCore $TK.Args.Id' @{ Id = "$($x.Id)" } {
                         param($TK); $r = $TK.Result
                         if ($r -and $r.Ok) { Show-Info ((T 'hist.undone') -f $r.Title) } else { Show-Info (T 'hist.undo.fail') }
-                        Build-HistoryPage; Build-TweakList
+                        # refresh every page an undo can affect (settings, startup apps, PATH, DNS, power plan)
+                        Build-HistoryPage; Build-TweakList; Build-AppsBody; Build-DevBody
                     }
                 })
             }

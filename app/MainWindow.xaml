@@ -286,9 +286,13 @@
 
       <Grid Grid.Row="0" Margin="36,26,36,12">
         <StackPanel>
-          <Border x:Name="NeonSign" HorizontalAlignment="Left" CornerRadius="20" BorderThickness="3" Padding="26,2,26,10" Margin="0,0,0,10" Visibility="Collapsed">
-            <StackPanel x:Name="NeonLetters" Orientation="Horizontal"/>
-          </Border>
+          <StackPanel x:Name="NeonRow" Orientation="Horizontal" Visibility="Collapsed">
+            <Border x:Name="NeonSign" HorizontalAlignment="Left" CornerRadius="20" BorderThickness="3" Padding="26,2,26,10" Margin="0,0,0,10">
+              <StackPanel x:Name="NeonLetters" Orientation="Horizontal"/>
+            </Border>
+            <!-- red neon EXIT sign with the running man: closes the app -->
+            <Border x:Name="NeonExit" VerticalAlignment="Center" CornerRadius="8" BorderThickness="2" Padding="9,4,12,4" Margin="72,0,0,10" Cursor="Hand"/>
+          </StackPanel>
           <TextBlock x:Name="PageTitle" FontSize="28" FontWeight="SemiBold"/>
           <TextBlock x:Name="PageSub" FontSize="14" Foreground="{DynamicResource SubBrush}" Margin="0,4,0,0"/>
         </StackPanel>
@@ -550,7 +554,7 @@
     </Grid>
 
     <!-- ===================== ΑΝΑΖΗΤΗΣΗ (Ctrl+K) ===================== -->
-    <Grid x:Name="Palette" Grid.ColumnSpan="2" Visibility="Collapsed" Background="#B3000000">
+    <Grid x:Name="Palette" Grid.ColumnSpan="2" Visibility="Collapsed" Background="#B3000000" KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.DirectionalNavigation="Contained">
       <Border x:Name="PaletteCard" Width="640" VerticalAlignment="Top" Margin="0,80,0,0" Padding="16" CornerRadius="14"
               Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1.5">
         <Border.Effect><DropShadowEffect Color="{DynamicResource AccentColor}" BlurRadius="30" ShadowDepth="0" Opacity="0.55"/></Border.Effect>

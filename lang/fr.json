@@ -550,7 +550,6 @@
  "hl.battery.btn": "Rapport de batterie",
  "hl.restart.btn": "Redémarrer maintenant",
  "hl.restart.confirm": "Redémarrer le PC maintenant ? Enregistrez d'abord votre travail.",
- "home.open": "OUVERT",
  "theme.vaporwave": "Vaporwave",
  "theme.toxic": "Toxique",
  "theme.ice": "Glace",
@@ -906,5 +905,7 @@
  "upd.app.fail.assets": "La version sur GitHub n'a pas ses fichiers de téléchargement. Réessayez plus tard ou téléchargez-la depuis la page GitHub.",
  "upd.app.fail.hash": "Le téléchargement ne correspondait pas à son empreinte SHA-256 ; il n'a PAS été installé. Réessayez plus tard.",
  "upd.app.fail.content": "Le paquet téléchargé semble incorrect ; il n'a PAS été installé.",
- "upd.app.fail.other": "Impossible de télécharger la mise à jour. Vérifiez la connexion internet et réessayez."
+ "upd.app.fail.other": "Impossible de télécharger la mise à jour. Vérifiez la connexion internet et réessayez.",
+ "home.exit": "SORTIE",
+ "home.exit.tip": "Fermer John's Toolkit"
 }

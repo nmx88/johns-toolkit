@@ -154,7 +154,7 @@ function Show-PageCore([string]$name) {
     $App.Page = $name
     foreach ($k in $Pages.Keys) { if ($k -eq $name) { $UI[$Pages[$k]].Visibility = 'Visible' } else { $UI[$Pages[$k]].Visibility = 'Collapsed' } }
     $UI.PageTitle.Text = T "page.$($name.ToLower()).t"
-    if ($name -eq 'Home') { $UI.PageTitle.Visibility = 'Collapsed'; $UI.NeonSign.Visibility = 'Visible' } else { $UI.PageTitle.Visibility = 'Visible'; $UI.NeonSign.Visibility = 'Collapsed' }
+    if ($name -eq 'Home') { $UI.PageTitle.Visibility = 'Collapsed'; $UI.NeonRow.Visibility = 'Visible' } else { $UI.PageTitle.Visibility = 'Visible'; $UI.NeonRow.Visibility = 'Collapsed' }
     Update-SignTimer
     $UI.PageSub.Text = T "page.$($name.ToLower()).s"
     if ($name -eq 'Home') { Update-Dashboard -Force }

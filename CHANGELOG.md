@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.6.2
+- The EXIT sign is about 20% smaller and sits further to the right.
+- Fix: after an undo in History, the Apps (startup), Developer (PATH, DNS) and Windows settings pages now refresh at once.
+- Fix: with the search window open, Tab no longer moves to (hidden) buttons behind it.
+- New bug-hunting tests: settings that are read but never set (silent typos), background tasks that call a missing function, links to pages that do not exist, history entries without a name in every language. Each was proven by injecting a deliberate bug.
+
+## v2.6.1
+- New **red neon EXIT sign** with the running-man figure next to the Welcome sign (replaces "OPEN"). It closes the app and glows brighter under the mouse; always red, like real exit signs.
+- Search ranks results better: the start of a word in a title counts most, a piece inside another word ("παρά**θυρα**") least, and the same stem matches ("θυρα" finds "Θύρες", "port" finds "Ports"). The "who uses port N" suggestion is always first when you type a number.
+- Tests: the neon-sign size check now accounts for the sign's margin (it was reporting a false clip); new checks for the EXIT sign and for the search examples above.
+
 ## v2.6.0
 - **Search (Ctrl+K)**: jump to any page, tab, Windows setting, theme or language, or run an action, by typing. Works in any of the 6 languages at once and ignores accents ("θυρες" finds "Θύρες"); type a number to see who uses that port. Also from the new Search button in the menu.
 - **History** page: every change John's Toolkit makes is recorded, with one-click **undo** for Windows settings, startup apps, PATH, DNS, power plan, leftovers, frozen programs and hidden Windows updates. Files sent to the Recycle Bin are marked and can be restored from there.

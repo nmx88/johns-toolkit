@@ -57,14 +57,7 @@ function Build-NeonSign {
         [void]$p.Children.Add($cell)
         $App.SignLetters += $cell
     }
-    # μικρή πινακίδα "OPEN" δίπλα
-    $open = [Windows.Controls.Border]::new()
-    $open.CornerRadius = 8; $open.BorderThickness = 2; $open.Padding = '9,1,9,2'; $open.Margin = '22,0,0,0'; $open.VerticalAlignment = 'Center'
-    $open.BorderBrush = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc2 0.35)); $open.Effect = New-Glow $acc2 16
-    $ot = [Windows.Controls.TextBlock]::new(); $ot.Text = T 'home.open'; $ot.FontSize = 15; $ot.FontWeight = 'Bold'
-    $ot.Foreground = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc2 0.55))
-    $open.Child = $ot
-    [void]$p.Children.Add($open); $App.SignOpen = $open
+    Build-ExitSign
     $UI.NeonSign.BorderBrush = [Windows.Media.SolidColorBrush]::new((Get-Lighter $acc2 0.35))
     $UI.NeonSign.Effect = New-Glow $acc2 24
     $idx = @(); for ($i = 1; $i -lt $App.SignLetters.Count; $i++) { if ("$($text[$i])".Trim()) { $idx += $i } }
@@ -79,7 +72,7 @@ function Build-NeonSign {
 function Set-SignStatic {
     foreach ($l in @($App.SignLetters)) { $l.Opacity = 1 }
     if ($App.SignBroken -ge 0 -and @($App.SignLetters).Count -gt $App.SignBroken) { $App.SignLetters[$App.SignBroken].Opacity = 0.28 }
-    if ($App.SignOpen) { $App.SignOpen.Opacity = 1 }
+    if ($App.SignExit) { $App.SignExit.Opacity = 1 }
     $UI.NeonSign.Opacity = 1
 }
 
@@ -107,10 +100,10 @@ function Step-NeonSign {
         $L[$i].Opacity = 1
         if ($r.NextDouble() -lt 0.006) { $App.SignOff[$i] = $r.Next(1, 3) }
     }
-    if ($App.SignOpen) {
-        if ($t -lt 26) { $App.SignOpen.Opacity = 0.08 }
-        elseif ($buzz) { $App.SignOpen.Opacity = 0.2 }
-        else { $App.SignOpen.Opacity = @(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.25)[$r.Next(20)] }
+    if ($App.SignExit) {
+        if ($t -lt 26) { $App.SignExit.Opacity = 0.08 }
+        elseif ($buzz) { $App.SignExit.Opacity = 0.2 }
+        else { if ($r.NextDouble() -lt 0.006) { $App.SignExit.Opacity = 0.3 } else { $App.SignExit.Opacity = 1 } }   # exit signs are almost always steady
     }
     if ($App.SignFrameOff -gt 0) { $App.SignFrameOff--; $UI.NeonSign.Opacity = 0.35 }
     elseif ($buzz) { $UI.NeonSign.Opacity = @(0.3, 1)[$t % 2] }
@@ -122,3 +115,32 @@ function Update-SignTimer {
     if ($App.Page -eq 'Home' -and (Test-SignMotion)) { if (-not $SignTimer.IsEnabled) { $SignTimer.Start() } }
     else { if ($SignTimer.IsEnabled) { $SignTimer.Stop() }; Set-SignStatic }
 }
+
+# ---------- Red neon EXIT sign with the running man (closes the app) ----------
+# Always red, like real exit signs, whatever the theme. The figure is drawn as a glowing tube too.
+$ExitFigure = 'M 17.2,3.6 A 2.2,2.2 0 1 1 12.8,3.6 A 2.2,2.2 0 1 1 17.2,3.6 Z M 13.6,7.2 L 11,14.2 M 13.1,8.6 L 16.6,11.1 L 19.2,9.6 M 13.1,8.6 L 9,10.1 L 7.4,13.2 M 11,14.2 L 14.6,17.1 L 13.6,22.2 M 11,14.2 L 9,18.6 L 4.8,19.6 M 20.6,3.4 L 23.6,3.4 L 23.6,22.4 L 20.6,22.4'
+function Build-ExitSign {
+    $x = $UI.NeonExit; if (-not $x) { return }
+    $red = ConvertTo-WpfColor '#FF2A3D'
+    $core = [Windows.Media.SolidColorBrush]::new((Get-Lighter $red 0.5)); $core.Freeze()
+    $x.BorderBrush = [Windows.Media.SolidColorBrush]::new((Get-Lighter $red 0.3))
+    $x.Effect = New-Glow $red 18
+    $row = [Windows.Controls.StackPanel]::new(); $row.Orientation = 'Horizontal'
+    $fig = [Windows.Shapes.Path]::new()
+    $fig.Data = [Windows.Media.Geometry]::Parse($ExitFigure)
+    $fig.Stroke = $core; $fig.StrokeThickness = 1.6; $fig.StrokeLineJoin = 'Round'; $fig.StrokeStartLineCap = 'Round'; $fig.StrokeEndLineCap = 'Round'
+    $fig.Stretch = 'Uniform'; $fig.Width = 23; $fig.Height = 23; $fig.Margin = '0,0,8,0'; $fig.VerticalAlignment = 'Center'
+    $fig.Effect = New-Glow $red 12
+    $tb = [Windows.Controls.TextBlock]::new(); $tb.Text = T 'home.exit'; $tb.FontSize = 17; $tb.FontWeight = 'Bold'
+    $tb.Foreground = $core; $tb.VerticalAlignment = 'Center'; $tb.Effect = New-Glow $red 14
+    [void]$row.Children.Add($fig); [void]$row.Children.Add($tb)
+    $x.Child = $row; $x.ToolTip = T 'home.exit.tip'
+    $App.SignExit = $x
+    if (-not $App.ExitWired) {
+        $App.ExitWired = $true
+        $x.Add_MouseLeftButtonUp({ Close-AppWindow })
+        $x.Add_MouseEnter({ $UI.NeonExit.Effect = New-Glow (ConvertTo-WpfColor '#FF2A3D') 30; $UI.NeonExit.BorderThickness = 2.8 })
+        $x.Add_MouseLeave({ $UI.NeonExit.Effect = New-Glow (ConvertTo-WpfColor '#FF2A3D') 18; $UI.NeonExit.BorderThickness = 2 })
+    }
+}
+function Close-AppWindow { $Win.Close() }

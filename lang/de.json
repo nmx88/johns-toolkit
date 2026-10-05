@@ -550,7 +550,6 @@
  "hl.battery.btn": "Akkubericht",
  "hl.restart.btn": "Jetzt neu starten",
  "hl.restart.confirm": "PC jetzt neu starten? Speichere zuerst deine Arbeit.",
- "home.open": "OFFEN",
  "theme.vaporwave": "Vaporwave",
  "theme.toxic": "Toxisch",
  "theme.ice": "Eis",
@@ -906,5 +905,7 @@
  "upd.app.fail.assets": "Der Release auf GitHub hat keine Download-Dateien. Später erneut versuchen oder von der GitHub-Seite herunterladen.",
  "upd.app.fail.hash": "Der Download stimmte nicht mit seiner SHA-256-Prüfsumme überein und wurde NICHT installiert. Später erneut versuchen.",
  "upd.app.fail.content": "Das heruntergeladene Paket sieht falsch aus und wurde NICHT installiert.",
- "upd.app.fail.other": "Das Update konnte nicht heruntergeladen werden. Internetverbindung prüfen und erneut versuchen."
+ "upd.app.fail.other": "Das Update konnte nicht heruntergeladen werden. Internetverbindung prüfen und erneut versuchen.",
+ "home.exit": "AUSGANG",
+ "home.exit.tip": "John's Toolkit schließen"
 }

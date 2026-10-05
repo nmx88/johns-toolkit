@@ -124,6 +124,39 @@ Invoke-Check 'static' 'Version is the same everywhere (config, Core, exe, CHANGE
     if ($cfg -ne $core -or -not $cs.StartsWith($cfg) -or -not $log) { "FAIL:config=$cfg core=$core exe=$cs changelog-entry=$log" } else { "v$cfg" }
 }
 
+Invoke-Check 'static' 'Every $App setting that is read is also set somewhere (catches silent typos)' {
+    $code = $coreText + "`r`n" + $guiText
+    $read = @([regex]::Matches($code, '\$App\.([A-Za-z]+)') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
+    $set = @{}
+    foreach ($m in [regex]::Matches($code, '\$App\.([A-Za-z]+)\s*(=|\+\+|--|\+=|-=)(?!=)')) { $set[$m.Groups[1].Value] = 1 }
+    # keys created in the $App = @{ ... } block of 00-State.ps1
+    $init = [regex]::Match($guiText, '(?s)\$App = @\{(.*?)\r?\n\}').Groups[1].Value
+    foreach ($m in [regex]::Matches($init, '(?:^|;|\n)\s*([A-Za-z]+)\s*=')) { $set[$m.Groups[1].Value] = 1 }
+    $methods = 'Settings', 'Count', 'Keys', 'Values', 'Contains', 'ContainsKey', 'Remove', 'Add', 'Clear'
+    $miss = @($read | Where-Object { -not $set.ContainsKey($_) -and $methods -notcontains $_ })
+    if ($miss) { 'FAIL:read but never set: ' + ($miss -join ', ') } else { "$($read.Count) settings" }
+}
+Invoke-Check 'static' 'Every background task calls a function that exists' {
+    $fns = @{}
+    foreach ($t in @($classicEngine, $coreText, $guiText)) { foreach ($m in [regex]::Matches($t, '(?m)^\s*function\s+([A-Za-z][\w-]*)')) { $fns[$m.Groups[1].Value] = 1 } }
+    $bad = @()
+    foreach ($m in [regex]::Matches($guiText, "Start-Task '[^']+' '([A-Za-z][\w-]*)")) { if (-not $fns.ContainsKey($m.Groups[1].Value)) { $bad += $m.Groups[1].Value } }
+    foreach ($m in [regex]::Matches($guiText, '\$\$x\.Work\b')) { }
+    if ($bad) { 'FAIL:unknown: ' + (($bad | Sort-Object -Unique) -join ', ') } else { "$([regex]::Matches($guiText, "Start-Task '").Count) task calls" }
+}
+Invoke-Check 'static' 'Every Show-Page target is a real page with a menu button' {
+    $pages = @([regex]::Matches($guiText, "(\w+) = 'Page\w+'") | ForEach-Object { $_.Groups[1].Value })
+    $navs = @([regex]::Matches($xamlText, 'x:Name="Nav(\w+)"') | ForEach-Object { $_.Groups[1].Value })
+    $bad = @()
+    foreach ($m in [regex]::Matches($guiText, "Show-Page '(\w+)'")) { $n = $m.Groups[1].Value; if ($pages -notcontains $n) { $bad += "$n (no page)" } elseif ($navs -notcontains $n) { $bad += "$n (no menu button)" } }
+    if ($bad) { 'FAIL:' + (($bad | Sort-Object -Unique) -join ', ') } else { "$($pages.Count) pages" }
+}
+Invoke-Check 'static' 'Every kind of history entry has a name in every language' {
+    $kinds = @([regex]::Matches($guiText + $coreText, "Add-History '(\w+)'") | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
+    $keys = @([regex]::Matches($guiText + $coreText, "Add-History '\w+' (?:\`$\(if \([^)]*\) \{ )?'(hist\.[\w.]+)'(?: \} else \{ '(hist\.[\w.]+)' \}\))?") | ForEach-Object { $_.Groups[1].Value; $_.Groups[2].Value } | Where-Object { $_ })
+    $miss = @(@($kinds | ForEach-Object { "hist.k.$_" }) + $keys | Sort-Object -Unique | Where-Object { -not $en.ContainsKey($_) })
+    if ($miss) { 'FAIL:' + ($miss -join ', ') } else { "$($kinds.Count) kinds, $(@($keys | Sort-Object -Unique).Count) titles" }
+}
 Invoke-Check 'static' 'PSScriptAnalyzer: no findings (rules in PSScriptAnalyzerSettings.psd1)' {
     if (-not (Get-Module PSScriptAnalyzer)) {
         try { Import-Module PSScriptAnalyzer -ErrorAction Stop } catch { if ($env:JT_PSSA) { Import-Module $env:JT_PSSA -ErrorAction SilentlyContinue } }
@@ -204,6 +237,7 @@ function Save-ChangeHistory { }
 $script:FixHistory = @()
 function Get-ChangeHistory { $script:FixHistory }
 function Start-AppUpdater { }
+function Close-AppWindow { Rec 'close-window' }
 function Write-GuiStage { }
 
 if (-not $OnWindows) {
@@ -360,14 +394,23 @@ Invoke-Check 'search' 'Search: every entry, accents ignored, English works in Gr
     $find = { param($q) $UI.PaletteBox.Text = $q; $App.PalSel = 0; Update-PaletteResults; @($App.PalItems) }
     $r1 = & $find 'θυρες'; if (-not ($r1 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'θυρες' (no accent) did not find the Ports tab" }
     $r2 = & $find 'ports'; if (-not ($r2 | Where-Object { $_.Label -like '*Θύρες*' })) { return "FAIL:'ports' (English) did not find the Ports tab in Greek" }
-    $r3 = & $find '5432'; if ($r3.Count -lt 1 -or $r3[0].Label -notlike '*5432*') { return "FAIL:'5432' did not offer the port lookup first" }
+    $r3 = & $find '5432'; if ($r3.Count -lt 1 -or $r3[0].Label -notlike '*5432*') { return "FAIL:'5432' did not offer the port lookup first (got: $(($r3 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
+    $r6 = & $find 'θυρα'; if ($r6.Count -lt 1 -or $r6[0].Label -notlike '*Θύρες*') { return "FAIL:'θυρα' should find the Ports tab first (got: $(($r6 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
+    $r7 = & $find 'port'; if ($r7.Count -lt 1 -or $r7[0].Label -notlike '*Θύρες*') { return "FAIL:'port' should find the Ports tab first (got: $(($r7 | Select-Object -First 2 | ForEach-Object { $_.Label }) -join ' / '))" }
     $r4 = & $find 'synthwave'; if (-not ($r4 | Where-Object { $_.Label -like '*Synthwave*' })) { return "FAIL:'synthwave' did not find the theme" }
     $r5 = & $find 'zzzqqq'; if ($r5.Count -ne 0) { return 'FAIL:nonsense found something' }
     Set-AppLanguage 'en'; Set-AllTexts
     "$($all.Count) entries"
 } -OnlyExceptions
+Invoke-Check 'ui' 'EXIT sign is built and closes the window when clicked' {
+    Show-Page 'Home'; $script:Calls.Clear()
+    if (-not $UI.NeonExit.Child) { return 'FAIL:the EXIT sign has no content' }
+    [void](Invoke-Ui $UI.NeonExit)
+    if (@($script:Calls) -notcontains 'close-window') { return 'FAIL:clicking EXIT did not close the window' }
+    'ok'
+} -OnlyExceptions
 Invoke-Check 'search' 'Search: every result runs without errors' {
-    $UI.PaletteBox.Text = ''; $all = @(Get-PaletteEntries '5432'); $bad = @()
+    $UI.PaletteBox.Text = ''; $all = @(Get-PaletteEntries '') + @(Get-PortSuggestion '5432'); $bad = @()
     foreach ($e in $all) {
         Set-Fixtures; $Error.Clear(); $script:Tasks.Clear()
         try { & $e.Run } catch { $bad += "$($e.Label): $($_.Exception.Message)" }
@@ -416,7 +459,9 @@ if ($RealWpf) {
             }
         }
         $s = $UI.NeonSign
-        if ($s.ActualHeight + 0.5 -lt $s.DesiredSize.Height -or $s.ActualWidth + 0.5 -lt $s.DesiredSize.Width) { $bad += ('sign {0:0}x{1:0} needs {2:0}x{3:0}' -f $s.ActualWidth, $s.ActualHeight, $s.DesiredSize.Width, $s.DesiredSize.Height) }
+        # DesiredSize includes the element's Margin, ActualWidth/Height do not
+        $needW = $s.DesiredSize.Width - $s.Margin.Left - $s.Margin.Right; $needH = $s.DesiredSize.Height - $s.Margin.Top - $s.Margin.Bottom
+        if ($s.ActualHeight + 0.5 -lt $needH -or $s.ActualWidth + 0.5 -lt $needW) { $bad += ('sign {0:0}x{1:0} needs {2:0}x{3:0}' -f $s.ActualWidth, $s.ActualHeight, $needW, $needH) }
         if ($bad) { 'FAIL:' + (($bad | Select-Object -First 4) -join '; ') } else { ('sign {0:0}x{1:0}, {2} letters' -f $s.ActualWidth, $s.ActualHeight, @($App.SignLetters).Count) }
     } -OnlyExceptions
     foreach ($th in @($Themes.Keys)) {
